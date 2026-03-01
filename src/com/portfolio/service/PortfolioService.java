@@ -17,6 +17,7 @@ public class PortfolioService {
     private com.portfolio.database.PortfolioDAO portfolioDAO; // Database access object for saving/loading data
     private CurrencyService currencyService; // Service for live exchange rates
     private String baseCurrency = "INR"; // Default display currency
+    private NotificationManager notificationManager; // NEW: Handles desktop/in-app alerts
 
     // Constructor - creates a new portfolio manager
     // Example: new PortfolioService(alphaVantageService)
@@ -27,6 +28,7 @@ public class PortfolioService {
         this.priceService = priceService; // Store the price service to use later
         this.portfolioDAO = new com.portfolio.database.PortfolioDAO(); // Create database access object
         this.currencyService = new CurrencyService(); // Initialize currency service
+        this.notificationManager = NotificationManager.getInstance(); // Initialize notification manager
 
         // Load existing data from database when service starts
         loadFromDatabase();
@@ -105,6 +107,7 @@ public class PortfolioService {
         try {
             portfolioDAO.savePortfolioItem(item);
             portfolioDAO.saveTransaction(transaction);
+            notificationManager.showTradeConfirmation(symbol, quantity, true);
         } catch (Exception e) {
             System.err.println("❌ Error saving to database: " + e.getMessage());
         }
@@ -155,6 +158,7 @@ public class PortfolioService {
             portfolioItems.remove(itemToSell);
             try {
                 portfolioDAO.deletePortfolioItem(symbol);
+                notificationManager.showTradeConfirmation(symbol, quantity, false);
                 System.out.println("✅ Sold all " + quantity + " shares of " + symbol + " @ ₹" + currentPrice);
             } catch (Exception e) {
                 System.err.println("❌ Error deleting from database: " + e.getMessage());
@@ -165,6 +169,7 @@ public class PortfolioService {
             itemToSell.setQuantity(newQuantity);
             try {
                 portfolioDAO.updatePortfolioItemQuantity(symbol, newQuantity);
+                notificationManager.showTradeConfirmation(symbol, quantity, false);
                 System.out.println("✅ Sold " + quantity + " shares of " + symbol + " @ ₹" + currentPrice + " ("
                         + newQuantity + " remaining)");
             } catch (Exception e) {

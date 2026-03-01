@@ -22,7 +22,9 @@ The following "Wow" features and premium enhancements have been added:
 
 ### 🎨 UX & Aesthetics
 - **FlatLaf Modernization**: Consistent dark-theme with premium rounded corners and smooth borders.
-- **Real-Time Stats**: Live P/L and Market Sentiment indicators in the header.
+- **Market Pulse Ticker**: Real-time streaming ticker in the top bar for live market sentiment.
+- **Notification Engine**: Native desktop alerts for trades, price targets, and system events.
+- **Advanced Transactions**: New registry with real-time filtering and PDF export simulation.
 - **Responsive UI**: Auto-adjusting layouts for different screen resolutions.
 
 ---

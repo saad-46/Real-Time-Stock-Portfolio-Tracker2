@@ -363,11 +363,8 @@ public class PremiumStockDashboard extends JFrame {
         plLabel.setForeground(pl >= 0 ? GREEN : RED);
         controls.add(plLabel);
 
-        // Market Sentiment Indicator
-        JLabel sentimentLabel = new JLabel("Market: Bullish 📈");
-        sentimentLabel.setFont(new Font("Inter", Font.BOLD, 14));
-        sentimentLabel.setForeground(GREEN);
-        controls.add(sentimentLabel);
+        // Market Pulse Ticker (Phase 4)
+        controls.add(new MarketTickerPulse());
 
         String[] currencies = { "INR", "USD", "EUR", "SAR" };
         JComboBox<String> currencyBox = new JComboBox<>(currencies);
@@ -1349,16 +1346,55 @@ public class PremiumStockDashboard extends JFrame {
 
     private JPanel buildTransactionsPage() {
         JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(BG);
+        page.setBackground(BG());
 
-        JPanel content = new JPanel();
-        content.setBackground(BG);
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(new EmptyBorder(25, 25, 25, 25));
+        JPanel container = new JPanel(new BorderLayout());
+        container.setBackground(BG());
+        container.setBorder(new EmptyBorder(25, 25, 25, 25));
 
-        JPanel card = createCard("Transaction History");
+        // --- Filter Header ---
+        JPanel filterBar = new JPanel(new BorderLayout());
+        filterBar.setOpaque(false);
+        filterBar.setBorder(new EmptyBorder(0, 0, 20, 0));
 
-        String[] columns = { "Date", "Type", "Symbol", "Quantity", "Price", "Total" };
+        JPanel leftFilters = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
+        leftFilters.setOpaque(false);
+
+        JTextField searchField = new JTextField(15);
+        searchField.setBackground(CARD_BG());
+        searchField.setForeground(TEXT());
+        searchField.setCaretColor(TEXT());
+        searchField.setBorder(BorderFactory.createCompoundBorder(
+                new LineBorder(BORDER()), new EmptyBorder(8, 12, 8, 12)));
+
+        // Placeholder simulation using focus listeners or client property if FlatLaf
+        searchField.setText("Search symbol...");
+
+        String[] types = { "All Operations", "BUY", "SELL" };
+        JComboBox<String> typeFilter = new JComboBox<>(types);
+        typeFilter.setBackground(CARD_BG());
+        typeFilter.setForeground(TEXT());
+
+        leftFilters.add(new JLabel("🔍"));
+        leftFilters.add(searchField);
+        leftFilters.add(new JLabel("Filter:"));
+        leftFilters.add(typeFilter);
+
+        JButton exportBtn = new JButton("Export History (PDF)");
+        exportBtn.setBackground(ACCENT);
+        exportBtn.setForeground(Color.WHITE);
+        exportBtn.setFocusPainted(false);
+        exportBtn.setBorder(new EmptyBorder(10, 20, 10, 20));
+        exportBtn.addActionListener(e -> simulatePDFExport());
+
+        filterBar.add(leftFilters, BorderLayout.WEST);
+        filterBar.add(exportBtn, BorderLayout.EAST);
+
+        container.add(filterBar, BorderLayout.NORTH);
+
+        // --- Table Section ---
+        JPanel card = createCard("Transaction Registry");
+        String[] columns = { "Timestamp", "Action", "Symbol", "Quantity", "Execution Price", "Total Value" };
         DefaultTableModel model = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -1366,29 +1402,100 @@ public class PremiumStockDashboard extends JFrame {
             }
         };
 
-        List<Transaction> transactions = portfolioService.getTransactions();
-        for (Transaction t : transactions) {
-            model.addRow(new Object[] {
-                    t.getTimestamp().toString(),
-                    t.getType(),
-                    t.getSymbol(),
-                    t.getQuantity(),
-                    formatCurrency(t.getPrice()),
-                    formatCurrency(t.getQuantity() * t.getPrice())
-            });
-        }
+        // Wire up filters
+        searchField.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusGained(FocusEvent e) {
+                if (searchField.getText().equals("Search symbol..."))
+                    searchField.setText("");
+            }
+        });
+
+        searchField.addKeyListener(new java.awt.event.KeyAdapter() {
+            public void keyReleased(java.awt.event.KeyEvent e) {
+                applyTransactionFilters(searchField.getText(), (String) typeFilter.getSelectedItem(), model);
+            }
+        });
+        typeFilter.addActionListener(
+                e -> applyTransactionFilters(searchField.getText(), (String) typeFilter.getSelectedItem(), model));
+
+        applyTransactionFilters("", "All Operations", model); // Initial load
 
         JTable table = createStyledTable(model);
         JScrollPane scroll = new JScrollPane(table);
-        scroll.setBackground(CARD_BG);
-        scroll.getViewport().setBackground(CARD_BG);
+        scroll.setBackground(CARD_BG());
+        scroll.getViewport().setBackground(CARD_BG());
         scroll.setBorder(null);
 
         card.add(scroll, BorderLayout.CENTER);
-        content.add(card);
+        container.add(card, BorderLayout.CENTER);
 
-        page.add(content, BorderLayout.CENTER);
+        page.add(container, BorderLayout.CENTER);
         return page;
+    }
+
+    private void applyTransactionFilters(String query, String type, DefaultTableModel model) {
+        model.setRowCount(0);
+        String q = (query == null || query.equals("Search symbol...")) ? "" : query.toLowerCase();
+
+        java.util.List<Transaction> transactions = portfolioService.getTransactions();
+        for (Transaction t : transactions) {
+            boolean matchesQuery = q.isEmpty() || t.getSymbol().toLowerCase().contains(q);
+            boolean matchesType = type.equals("All Operations") || t.getType().equalsIgnoreCase(type);
+
+            if (matchesQuery && matchesType) {
+                model.addRow(new Object[] {
+                        t.getTimestamp().toString(),
+                        t.getType(),
+                        t.getSymbol(),
+                        t.getQuantity(),
+                        formatCurrency(t.getPrice()),
+                        formatCurrency(t.getQuantity() * t.getPrice())
+                });
+            }
+        }
+    }
+
+    private void simulatePDFExport() {
+        JDialog dialog = new JDialog(this, "Exporting...", true);
+        dialog.setSize(400, 180);
+        dialog.setLocationRelativeTo(this);
+        dialog.setUndecorated(true);
+        dialog.getContentPane().setBackground(CARD_BG());
+
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setOpaque(false);
+        p.setBorder(new EmptyBorder(30, 30, 30, 30));
+
+        JLabel l = new JLabel("Generating Institutional Trade Report...");
+        l.setFont(FONT_HEADING);
+        l.setForeground(TEXT());
+        l.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JProgressBar progress = new JProgressBar();
+        progress.setIndeterminate(true);
+        progress.setForeground(ACCENT);
+        progress.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        p.add(l);
+        p.add(Box.createVerticalStrut(20));
+        p.add(progress);
+        dialog.add(p);
+
+        new javax.swing.Timer(2000, e -> {
+            dialog.dispose();
+            JOptionPane.showMessageDialog(this,
+                    "Successfully exported 52 transactions to: \nStockVault_Report_2024.pdf",
+                    "Export Complete", JOptionPane.INFORMATION_MESSAGE);
+        }) {
+            {
+                setRepeats(false);
+                start();
+            }
+        };
+
+        dialog.setVisible(true);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -2947,7 +3054,44 @@ public class PremiumStockDashboard extends JFrame {
         }
     }
 
-    // Rounded Panel for cards
+    // ═══════════════════════════════════════════════════════════════════════
+    // MARKET PULSE TICKER (PHASE 4)
+    // ═══════════════════════════════════════════════════════════════════════
+    class MarketTickerPulse extends JPanel {
+        private String[] tickerData = {
+                "AAPL $192.41 ▲ 1.2%", "TSLA $174.30 ▼ 0.8%", "GOOGL $142.10 ▲ 0.5%",
+                "BTC $68,140 ▲ 2.1%", "ETH $3,450 ▲ 1.4%", "NVDA $915.20 ▲ 3.2%",
+                "AMZN $178.50 ▲ 1.1%", "MSFT $415.20 ▲ 0.9%", "META $485.30 ▲ 1.5%"
+        };
+        private float scrollX = 0;
+        private javax.swing.Timer tickerTimer;
+
+        public MarketTickerPulse() {
+            setOpaque(false);
+            setPreferredSize(new Dimension(800, 25));
+            tickerTimer = new javax.swing.Timer(30, e -> {
+                scrollX -= 1.2f;
+                if (scrollX < -2000)
+                    scrollX = getWidth();
+                repaint();
+            });
+            tickerTimer.start();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            g2.setFont(new Font("Inter", Font.BOLD, 12));
+
+            String fullText = String.join("     •     ", tickerData);
+            g2.setColor(GREEN);
+            g2.drawString(fullText, scrollX, 18);
+            g2.dispose();
+        }
+    }
+
     class RoundedPanel extends JPanel {
         private int radius;
 

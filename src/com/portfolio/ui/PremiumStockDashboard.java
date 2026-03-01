@@ -1756,16 +1756,16 @@ public class PremiumStockDashboard extends JFrame {
 
     private JPanel createCard(String title) {
         JPanel card = new JPanel(new BorderLayout());
-        card.setBackground(CARD_BG);
+        card.setBackground(CARD_BG());
         card.setBorder(new CompoundBorder(
-                new LineBorder(BORDER, 1, true), // Rounded already
+                new LineBorder(BORDER(), 1, true), // Rounded already
                 new EmptyBorder(20, 20, 20, 20) // More padding
         ));
 
         if (title != null && !title.isEmpty()) {
             JLabel titleLabel = new JLabel(title);
             titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 19)); // Larger title
-            titleLabel.setForeground(TEXT);
+            titleLabel.setForeground(TEXT());
             titleLabel.setBorder(new EmptyBorder(0, 0, 15, 0));
             card.add(titleLabel, BorderLayout.NORTH);
         }
@@ -1776,12 +1776,12 @@ public class PremiumStockDashboard extends JFrame {
     private JPanel createStatCard(String label, String value, Color color) {
         RoundedPanel card = new RoundedPanel(20); // ROUNDED CORNERS!
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBackground(CARD_BG);
+        card.setBackground(CARD_BG());
         card.setBorder(new EmptyBorder(25, 25, 25, 25)); // More padding
 
         JLabel labelComp = new JLabel(label);
         labelComp.setFont(new Font("Segoe UI", Font.BOLD, 16)); // Larger
-        labelComp.setForeground(TEXT_DIM);
+        labelComp.setForeground(TEXT_DIM());
         labelComp.setAlignmentX(Component.CENTER_ALIGNMENT); // CENTER!
 
         JLabel valueComp = new JLabel(value);
@@ -1808,14 +1808,14 @@ public class PremiumStockDashboard extends JFrame {
             }
         };
 
-        table.setBackground(CARD_BG);
-        table.setForeground(TEXT);
+        table.setBackground(CARD_BG());
+        table.setForeground(TEXT());
         table.setFont(new Font("Segoe UI", Font.BOLD, 15)); // BOLD!
         table.setRowHeight(45); // TALLER!
         table.setShowGrid(false);
         table.setIntercellSpacing(new Dimension(0, 0));
-        table.setSelectionBackground(CARD_HOVER);
-        table.setSelectionForeground(TEXT);
+        table.setSelectionBackground(CARD_HOVER());
+        table.setSelectionForeground(TEXT());
 
         // Center align all columns
         DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
@@ -1826,10 +1826,10 @@ public class PremiumStockDashboard extends JFrame {
         }
 
         JTableHeader header = table.getTableHeader();
-        header.setBackground(BG);
-        header.setForeground(TEXT);
+        header.setBackground(BG());
+        header.setForeground(TEXT());
         header.setFont(new Font("Segoe UI", Font.BOLD, 16)); // BOLD HEADER!
-        header.setBorder(new MatteBorder(0, 0, 2, 0, BORDER));
+        header.setBorder(new MatteBorder(0, 0, 2, 0, BORDER()));
         header.setPreferredSize(new Dimension(0, 50)); // TALLER HEADER!
 
         // Center align headers
@@ -1973,7 +1973,7 @@ public class PremiumStockDashboard extends JFrame {
 
         JLabel label = new JLabel(text);
         label.setFont(new Font("Segoe UI", Font.BOLD, 10));
-        label.setForeground(Color.WHITE);
+        label.setForeground(isDarkTheme ? Color.WHITE : new Color(40, 40, 60));
         tag.add(label);
 
         return tag;
@@ -1982,11 +1982,11 @@ public class PremiumStockDashboard extends JFrame {
     private JTextField createInputField(String placeholder) {
         JTextField field = new RoundedTextField(20);
         field.setFont(FONT_BODY);
-        field.setForeground(TEXT);
-        field.setBackground(CARD_BG);
-        field.setCaretColor(TEXT);
+        field.setForeground(TEXT());
+        field.setBackground(CARD_BG());
+        field.setCaretColor(TEXT());
         field.setBorder(new CompoundBorder(
-                new LineBorder(BORDER, 1, true),
+                new LineBorder(BORDER(), 1, true),
                 new EmptyBorder(10, 15, 10, 15)));
         return field;
     }

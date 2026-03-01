@@ -28,26 +28,90 @@ import org.jfree.data.general.*;
  */
 public class PremiumStockDashboard extends JFrame {
 
-    // Color Palette - IMPROVED CONTRAST
-    static final Color BG = new Color(15, 15, 15);
-    static final Color SIDEBAR_BG = new Color(26, 26, 46);
-    static final Color CARD_BG = new Color(30, 30, 46);
-    static final Color CARD_HOVER = new Color(42, 42, 62);
+    // ═══════════════════════════════════════════════════════════════════════
+    // THEME ENGINE — Dynamic Dark/Light Palettes
+    // ═══════════════════════════════════════════════════════════════════════
+    static boolean isDarkTheme = true;
+    static {
+        try {
+            isDarkTheme = java.util.prefs.Preferences.userRoot().node("stockvault").getBoolean("dark", true);
+        } catch (Exception e) {
+        }
+    }
+
+    // Dynamic color accessors
+    static Color BG() {
+        return isDarkTheme ? new Color(15, 15, 15) : new Color(245, 246, 250);
+    }
+
+    static Color SIDEBAR_BG() {
+        return isDarkTheme ? new Color(26, 26, 46) : new Color(235, 237, 245);
+    }
+
+    static Color CARD_BG() {
+        return isDarkTheme ? new Color(30, 30, 46) : Color.WHITE;
+    }
+
+    static Color CARD_HOVER() {
+        return isDarkTheme ? new Color(42, 42, 62) : new Color(230, 232, 240);
+    }
+
+    static Color TOPBAR_BG() {
+        return isDarkTheme ? new Color(20, 20, 40) : new Color(250, 250, 255);
+    }
+
+    static Color TEXT() {
+        return isDarkTheme ? new Color(255, 255, 255) : new Color(30, 30, 40);
+    }
+
+    static Color TEXT_DIM() {
+        return isDarkTheme ? new Color(180, 180, 200) : new Color(120, 120, 140);
+    }
+
+    static Color BORDER() {
+        return isDarkTheme ? new Color(60, 60, 90) : new Color(210, 215, 225);
+    }
+
+    // Static accent colors (same in both themes)
     static final Color ACCENT = new Color(102, 126, 234);
     static final Color ACCENT2 = new Color(118, 75, 162);
-    static final Color TEXT = new Color(255, 255, 255); // Brighter white
-    static final Color TEXT_DIM = new Color(180, 180, 200); // Lighter gray
     static final Color GREEN = new Color(74, 222, 128);
     static final Color RED = new Color(248, 113, 113);
-    static final Color BORDER = new Color(60, 60, 90); // Lighter border
 
-    // Fonts with emoji support - LARGER SIZES
+    // Legacy compat aliases (used in inner classes where static context matters)
+    static Color BG = BG();
+    static Color SIDEBAR_BG = SIDEBAR_BG();
+    static Color CARD_BG = CARD_BG();
+    static Color CARD_HOVER = CARD_HOVER();
+    static Color TEXT = TEXT();
+    static Color TEXT_DIM = TEXT_DIM();
+    static Color BORDER = BORDER();
+
+    static void refreshThemeColors() {
+        BG = BG();
+        SIDEBAR_BG = SIDEBAR_BG();
+        CARD_BG = CARD_BG();
+        CARD_HOVER = CARD_HOVER();
+        TEXT = TEXT();
+        TEXT_DIM = TEXT_DIM();
+        BORDER = BORDER();
+    }
+
+    // Fonts with emoji support
     static final Font FONT_TITLE = new Font("Segoe UI", Font.BOLD, 28);
     static final Font FONT_HEADING = new Font("Segoe UI", Font.BOLD, 18);
     static final Font FONT_BODY = new Font("Segoe UI", Font.PLAIN, 15);
     static final Font FONT_SMALL = new Font("Segoe UI", Font.PLAIN, 13);
     static final Font FONT_EMOJI = new Font("Segoe UI Emoji", Font.PLAIN, 24);
-    static final Font FONT_SIDEBAR = new Font("Segoe UI", Font.BOLD, 16); // NEW: Larger sidebar
+    static final Font FONT_SIDEBAR = new Font("Segoe UI", Font.BOLD, 16);
+
+    // Sidebar animation state
+    private static final int SIDEBAR_COLLAPSED = 60;
+    private static final int SIDEBAR_EXPANDED = 240;
+    private int sidebarWidth = SIDEBAR_COLLAPSED;
+    private javax.swing.Timer sidebarTimer;
+    private JPanel sidebarRef;
+    private List<JLabel> navLabels = new ArrayList<>();
 
     // State
     private CardLayout cardLayout;
@@ -60,11 +124,11 @@ public class PremiumStockDashboard extends JFrame {
     private final AssemblyAIVoiceService voiceService;
     private final GroqAIService groqAIService;
     private final TextToSpeechService ttsService;
-    private final NewsService newsService; // Added NewsService
+    private final NewsService newsService;
     private final Map<String, List<StockPrice>> historyCache = new HashMap<>();
     private volatile boolean isRecording = false;
     private volatile boolean isSpeaking = false;
-    private String lastUserCommand = ""; // Store last command for Implement button
+    private String lastUserCommand = "";
 
     // Stock autocomplete data
     static final String[] STOCKS = {
@@ -83,10 +147,7 @@ public class PremiumStockDashboard extends JFrame {
                 UIManager.setLookAndFeel(new FlatDarkLaf());
             } catch (Exception ignored) {
             }
-
-            // Show welcome screen first
             WelcomeScreen welcomeScreen = new WelcomeScreen(() -> {
-                // After login, show main dashboard
                 StockPriceService priceService = new AlphaVantageService();
                 PortfolioService portfolioService = new PortfolioService(priceService);
                 new PremiumStockDashboard(portfolioService).setVisible(true);
@@ -111,10 +172,11 @@ public class PremiumStockDashboard extends JFrame {
         setSize(1400, 900);
         setMinimumSize(new Dimension(1200, 700));
         setLocationRelativeTo(null);
-        getContentPane().setBackground(BG);
+        getContentPane().setBackground(BG());
         setLayout(new BorderLayout());
 
-        add(buildSidebar(), BorderLayout.WEST);
+        sidebarRef = buildSidebar();
+        add(sidebarRef, BorderLayout.WEST);
 
         JLayeredPane layeredPane = new JLayeredPane();
         JPanel main = buildMain();
@@ -152,22 +214,37 @@ public class PremiumStockDashboard extends JFrame {
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g;
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                GradientPaint gp = new GradientPaint(0, 0, SIDEBAR_BG, 0, getHeight(), new Color(13, 13, 26));
+                Color top = isDarkTheme ? SIDEBAR_BG() : new Color(240, 242, 250);
+                Color bot = isDarkTheme ? new Color(13, 13, 26) : new Color(225, 228, 240);
+                GradientPaint gp = new GradientPaint(0, 0, top, 0, getHeight(), bot);
                 g2.setPaint(gp);
                 g2.fillRect(0, 0, getWidth(), getHeight());
             }
         };
-        sidebar.setPreferredSize(new Dimension(240, 0));
+        sidebar.setPreferredSize(new Dimension(SIDEBAR_COLLAPSED, 0));
         sidebar.setLayout(new BorderLayout());
-        sidebar.setBorder(new MatteBorder(0, 0, 0, 1, BORDER));
+        sidebar.setBorder(new MatteBorder(0, 0, 0, 1, BORDER()));
 
-        // Logo with emoji
-        JPanel logoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 20));
+        // Logo — click navigates to Dashboard
+        JPanel logoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 18));
         logoPanel.setOpaque(false);
-        JLabel logo = new JLabel("💎 StockVault");
-        logo.setFont(new Font("Segoe UI Emoji", Font.BOLD, 22));
-        logo.setForeground(ACCENT);
-        logoPanel.add(logo);
+        JLabel logoIcon = new JLabel("💎");
+        logoIcon.setFont(new Font("Segoe UI Emoji", Font.BOLD, 24));
+        logoIcon.setForeground(ACCENT);
+        JLabel logoText = new JLabel("StockVault");
+        logoText.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        logoText.setForeground(ACCENT);
+        logoText.setVisible(false);
+        navLabels.add(logoText);
+        logoPanel.add(logoIcon);
+        logoPanel.add(logoText);
+        logoPanel.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        logoPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                navigate("Dashboard");
+            }
+        });
         sidebar.add(logoPanel, BorderLayout.NORTH);
 
         // Navigation
@@ -197,15 +274,59 @@ public class PremiumStockDashboard extends JFrame {
         sidebar.add(navPanel, BorderLayout.CENTER);
 
         // Footer
-        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 15));
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 15));
         footer.setOpaque(false);
-        JLabel ver = new JLabel("v2.1.0  •  🟢 Market Open");
-        ver.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 11));
-        ver.setForeground(TEXT_DIM);
-        footer.add(ver);
+        JLabel verIcon = new JLabel("🟢");
+        verIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 11));
+        verIcon.setForeground(TEXT_DIM());
+        JLabel verText = new JLabel("v3.0  •  Market Open");
+        verText.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        verText.setForeground(TEXT_DIM());
+        verText.setVisible(false);
+        navLabels.add(verText);
+        footer.add(verIcon);
+        footer.add(verText);
         sidebar.add(footer, BorderLayout.SOUTH);
 
+        // Hover animation: expand on enter, collapse on exit
+        sidebar.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                animateSidebar(true);
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                animateSidebar(false);
+            }
+        });
+
         return sidebar;
+    }
+
+    private void animateSidebar(boolean expand) {
+        int target = expand ? SIDEBAR_EXPANDED : SIDEBAR_COLLAPSED;
+        if (sidebarTimer != null && sidebarTimer.isRunning())
+            sidebarTimer.stop();
+        sidebarTimer = new javax.swing.Timer(8, null);
+        sidebarTimer.addActionListener(e -> {
+            int step = expand ? 15 : -15;
+            sidebarWidth += step;
+            if ((expand && sidebarWidth >= target) || (!expand && sidebarWidth <= target)) {
+                sidebarWidth = target;
+                sidebarTimer.stop();
+            }
+            sidebarRef.setPreferredSize(new Dimension(sidebarWidth, 0));
+            // Show/hide labels when fully expanded/collapsed
+            boolean showLabels = sidebarWidth > 150;
+            for (JLabel lbl : navLabels)
+                lbl.setVisible(showLabels);
+            for (NavButton nb : navButtons)
+                nb.setCollapsed(!showLabels);
+            sidebarRef.revalidate();
+            sidebarRef.repaint();
+        });
+        sidebarTimer.start();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -214,28 +335,31 @@ public class PremiumStockDashboard extends JFrame {
 
     private JPanel buildMain() {
         JPanel main = new JPanel(new BorderLayout());
-        main.setBackground(BG);
+        main.setBackground(BG());
 
         // Top bar
         JPanel topbar = new JPanel(new BorderLayout());
-        topbar.setBackground(new Color(20, 20, 40));
+        topbar.setBackground(TOPBAR_BG());
         topbar.setBorder(new CompoundBorder(
-                new MatteBorder(0, 0, 1, 0, BORDER),
+                new MatteBorder(0, 0, 1, 0, BORDER()),
                 new EmptyBorder(15, 25, 15, 25)));
 
         pageTitle = new JLabel("Dashboard");
         pageTitle.setFont(FONT_TITLE);
-        pageTitle.setForeground(TEXT);
+        pageTitle.setForeground(TEXT());
         topbar.add(pageTitle, BorderLayout.WEST);
 
-        // Top Controls (Search + Currency + Sentiment)
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 20, 0));
+        // Top Controls
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
         controls.setOpaque(false);
 
-        // Portfolio Stats in Top Bar
+        // Theme Toggle Pill
+        controls.add(new ThemeToggle());
+
+        // P/L Indicator
         double pl = portfolioService.calculateProfitLoss();
         JLabel plLabel = new JLabel("P/L: " + getCurrencySymbol() + String.format("%.2f", pl));
-        plLabel.setFont(new Font("Inter", Font.BOLD, 14));
+        plLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
         plLabel.setForeground(pl >= 0 ? GREEN : RED);
         controls.add(plLabel);
 
@@ -307,6 +431,22 @@ public class PremiumStockDashboard extends JFrame {
 
     private String formatCurrency(double amount) {
         return String.format("%s%.2f", getCurrencySymbol(), amount);
+    }
+
+    /**
+     * Generate deterministic sparkline data from a stock symbol and current price
+     */
+    private double[] generateSparklineData(String symbol, double currentPrice) {
+        Random rand = new Random(symbol.hashCode());
+        int points = 15;
+        double[] data = new double[points];
+        double price = currentPrice * (0.85 + rand.nextDouble() * 0.15);
+        for (int i = 0; i < points; i++) {
+            price += (rand.nextDouble() - 0.48) * (currentPrice * 0.03);
+            data[i] = price;
+        }
+        data[points - 1] = currentPrice; // ensure last point is actual price
+        return data;
     }
 
     private void navigate(String page) {
@@ -467,11 +607,16 @@ public class PremiumStockDashboard extends JFrame {
         JPanel recentPanel = createCard("Recent Stocks");
         recentPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300));
 
-        String[] columns = { "Symbol", "Name", "Quantity", "Price", "Value", "Gain/Loss" };
+        String[] columns = { "Symbol", "Name", "Qty", "Price", "Value", "Gain/Loss", "Trend" };
         DefaultTableModel model = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
+            }
+
+            @Override
+            public Class<?> getColumnClass(int col) {
+                return col == 6 ? Object.class : super.getColumnClass(col);
             }
         };
 
@@ -489,11 +634,14 @@ public class PremiumStockDashboard extends JFrame {
                     item.getQuantity(),
                     formatCurrency(convertedPrice),
                     formatCurrency(convertedTotal),
-                    formatCurrency(convertedGain)
+                    formatCurrency(convertedGain),
+                    generateSparklineData(item.getStock().getSymbol(), item.getStock().getCurrentPrice())
             });
         }
 
         JTable table = createStyledTable(model);
+        table.getColumnModel().getColumn(6).setCellRenderer(new SparklineCellRenderer());
+        table.setRowHeight(35);
         JScrollPane scroll = new JScrollPane(table);
         scroll.setBackground(CARD_BG);
         scroll.getViewport().setBackground(CARD_BG);
@@ -589,12 +737,17 @@ public class PremiumStockDashboard extends JFrame {
         // Portfolio table
         JPanel tableCard = createCard("Your Holdings");
 
-        String[] columns = { "Symbol", "Name", "Quantity", "Buy Price", "Current Price", "Total Value", "Gain/Loss",
-                "Return %" };
+        String[] columns = { "Symbol", "Name", "Qty", "Buy Price", "Current", "Value", "Gain/Loss", "Return %",
+                "Trend" };
         DefaultTableModel model = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
+            }
+
+            @Override
+            public Class<?> getColumnClass(int col) {
+                return col == 8 ? Object.class : super.getColumnClass(col);
             }
         };
 
@@ -618,11 +771,14 @@ public class PremiumStockDashboard extends JFrame {
                     formatCurrency(convertedCurrent),
                     formatCurrency(convertedTotal),
                     formatCurrency(convertedGain),
-                    String.format("%.2f%%", returnPercent)
+                    String.format("%.2f%%", returnPercent),
+                    generateSparklineData(item.getStock().getSymbol(), item.getStock().getCurrentPrice())
             });
         }
 
         JTable table = createStyledTable(model);
+        table.getColumnModel().getColumn(8).setCellRenderer(new SparklineCellRenderer());
+        table.setRowHeight(35);
         JScrollPane scroll = new JScrollPane(table);
         scroll.setBackground(CARD_BG);
         scroll.getViewport().setBackground(CARD_BG);
@@ -1904,9 +2060,9 @@ public class PremiumStockDashboard extends JFrame {
         // Header with close button
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
-        JLabel title = new JLabel("🤖 AI Assistant");
+        JLabel title = new JLabel("🧠 AI Assistant");
         title.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        title.setForeground(TEXT);
+        title.setForeground(TEXT());
 
         JButton closeBtn = createStyledButton("✕", RED);
         closeBtn.setPreferredSize(new Dimension(45, 30));
@@ -1919,21 +2075,24 @@ public class PremiumStockDashboard extends JFrame {
         // Conversation area
         JTextArea conversationArea = new JTextArea();
         conversationArea.setFont(FONT_BODY);
-        conversationArea.setForeground(TEXT);
-        conversationArea.setBackground(BG);
-        conversationArea.setCaretColor(TEXT);
+        conversationArea.setForeground(TEXT());
+        conversationArea.setBackground(BG());
+        conversationArea.setCaretColor(TEXT());
         conversationArea.setLineWrap(true);
         conversationArea.setWrapStyleWord(true);
         conversationArea.setEditable(false);
         conversationArea.setBorder(new EmptyBorder(10, 10, 10, 10));
-        conversationArea.setText("👋 Hi! I'm your AI assistant. I can help you with:\n\n" +
+        conversationArea.setText("👋 Welcome to StockVault AI Terminal\n\n" +
                 "📊 Information Queries:\n" +
-                "• 'What are trending stocks?'\n" +
-                "• 'What's my portfolio worth?'\n\n" +
+                "  • 'What are trending stocks?'\n" +
+                "  • 'What's my portfolio worth?'\n\n" +
                 "⚡ Action Commands:\n" +
-                "• 'Buy 10 Apple at 150'\n" +
-                "• 'Sell all Google shares'\n\n" +
-                "🎤 Speak or ⌨️ Type to start!");
+                "  • 'Buy 10 AAPL \u2013 Apple Inc at 150'\n" +
+                "  • 'Sell all GOOGL \u2013 Alphabet Inc'\n\n" +
+                "📩 Alerts & Notifications:\n" +
+                "  • Real-time trade confirmations\n" +
+                "  • Market movement alerts\n\n" +
+                "🗣 Voice or ⌨️ Type to begin!");
 
         JScrollPane scroll = new JScrollPane(conversationArea);
         scroll.setBorder(new LineBorder(BORDER, 1, true));
@@ -1959,8 +2118,8 @@ public class PremiumStockDashboard extends JFrame {
 
                 if (isActionCommand) {
                     lastUserCommand = message;
-                    conversationArea.append("\n\n👤 You: " + message);
-                    conversationArea.append("\n\n💡 Click '✅ Implement' to execute");
+                    conversationArea.append("\n\n⌨️ You: " + message);
+                    conversationArea.append("\n\n⚡ Click '✅ Implement' to execute this trade");
                     conversationArea.setCaretPosition(conversationArea.getDocument().getLength());
                 } else {
                     processAIConversation(message, conversationArea);
@@ -2378,13 +2537,16 @@ public class PremiumStockDashboard extends JFrame {
 
     class NavButton extends JButton {
         String label;
+        String icon;
         boolean active = false;
+        private boolean collapsed = true;
 
         NavButton(String icon, String label) {
-            super(icon + "  " + label);
+            super(icon);
+            this.icon = icon;
             this.label = label;
 
-            setFont(FONT_SIDEBAR); // Larger font
+            setFont(FONT_SIDEBAR);
             setForeground(TEXT_DIM);
             setBackground(SIDEBAR_BG);
             setFocusPainted(false);
@@ -2392,8 +2554,8 @@ public class PremiumStockDashboard extends JFrame {
             setContentAreaFilled(false);
             setHorizontalAlignment(SwingConstants.LEFT);
             setCursor(new Cursor(Cursor.HAND_CURSOR));
-            setBorder(new EmptyBorder(15, 25, 15, 25)); // More padding
-            setMaximumSize(new Dimension(Integer.MAX_VALUE, 55)); // Taller buttons
+            setBorder(new EmptyBorder(15, 18, 15, 18));
+            setMaximumSize(new Dimension(Integer.MAX_VALUE, 55));
 
             addMouseListener(new MouseAdapter() {
                 @Override
@@ -2415,11 +2577,16 @@ public class PremiumStockDashboard extends JFrame {
             });
         }
 
+        void setCollapsed(boolean collapsed) {
+            this.collapsed = collapsed;
+            setText(collapsed ? icon : icon + "  " + label);
+        }
+
         void setActive(boolean active) {
             this.active = active;
             if (active) {
                 setForeground(ACCENT);
-                setFont(new Font("Segoe UI", Font.BOLD, 17)); // BOLD when active
+                setFont(new Font("Segoe UI", Font.BOLD, 17));
                 setBackground(CARD_BG);
                 setContentAreaFilled(true);
             } else {
@@ -2427,6 +2594,159 @@ public class PremiumStockDashboard extends JFrame {
                 setFont(FONT_SIDEBAR);
                 setContentAreaFilled(false);
             }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // SPARKLINE PANEL — Smooth Bézier Curves with Gradient Fill
+    // ═══════════════════════════════════════════════════════════════════════
+
+    class SparklinePanel extends JPanel {
+        private double[] data;
+        private boolean positive;
+
+        SparklinePanel(double[] data) {
+            this.data = data;
+            this.positive = data.length > 1 && data[data.length - 1] >= data[0];
+            setOpaque(false);
+            setPreferredSize(new Dimension(80, 30));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (data == null || data.length < 2)
+                return;
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth(), h = getHeight();
+            double min = Double.MAX_VALUE, max = Double.MIN_VALUE;
+            for (double d : data) {
+                min = Math.min(min, d);
+                max = Math.max(max, d);
+            }
+            double range = max - min;
+            if (range == 0)
+                range = 1;
+
+            int n = data.length;
+            int[] px = new int[n];
+            int[] py = new int[n];
+            for (int i = 0; i < n; i++) {
+                px[i] = (int) ((double) i / (n - 1) * (w - 4)) + 2;
+                py[i] = h - 4 - (int) ((data[i] - min) / range * (h - 8));
+            }
+
+            // Build smooth path using QuadCurve segments
+            java.awt.geom.GeneralPath path = new java.awt.geom.GeneralPath();
+            path.moveTo(px[0], py[0]);
+            for (int i = 0; i < n - 1; i++) {
+                int cx = (px[i] + px[i + 1]) / 2;
+                int cy = (py[i] + py[i + 1]) / 2;
+                path.quadTo(px[i], py[i], cx, cy);
+            }
+            path.lineTo(px[n - 1], py[n - 1]);
+
+            // Fill with gradient
+            java.awt.geom.GeneralPath fillPath = (java.awt.geom.GeneralPath) path.clone();
+            fillPath.lineTo(px[n - 1], h);
+            fillPath.lineTo(px[0], h);
+            fillPath.closePath();
+            Color lineColor = positive ? GREEN : RED;
+            Color fillTop = new Color(lineColor.getRed(), lineColor.getGreen(), lineColor.getBlue(), 60);
+            Color fillBot = new Color(lineColor.getRed(), lineColor.getGreen(), lineColor.getBlue(), 5);
+            g2.setPaint(new GradientPaint(0, 0, fillTop, 0, h, fillBot));
+            g2.fill(fillPath);
+
+            // Draw line
+            g2.setColor(lineColor);
+            g2.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.draw(path);
+            g2.dispose();
+        }
+    }
+
+    class SparklineCellRenderer extends JPanel implements TableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus,
+                int row, int column) {
+            removeAll();
+            setLayout(new BorderLayout());
+            setBackground(isSelected ? CARD_HOVER : CARD_BG);
+            if (value instanceof double[]) {
+                SparklinePanel sp = new SparklinePanel((double[]) value);
+                sp.setPreferredSize(new Dimension(80, 28));
+                add(sp, BorderLayout.CENTER);
+            }
+            return this;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // THEME TOGGLE — Animated Dark/Light Pill Switch
+    // ═══════════════════════════════════════════════════════════════════════
+
+    class ThemeToggle extends JPanel {
+        ThemeToggle() {
+            setPreferredSize(new Dimension(60, 30));
+            setOpaque(false);
+            setCursor(new Cursor(Cursor.HAND_CURSOR));
+            setToolTipText(isDarkTheme ? "Switch to Light Mode" : "Switch to Dark Mode");
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    isDarkTheme = !isDarkTheme;
+                    try {
+                        java.util.prefs.Preferences.userRoot().node("stockvault").putBoolean("dark", isDarkTheme);
+                    } catch (Exception ex) {
+                    }
+                    refreshThemeColors();
+                    setToolTipText(isDarkTheme ? "Switch to Light Mode" : "Switch to Dark Mode");
+                    // Rebuild entire UI
+                    getContentPane().removeAll();
+                    sidebarRef = buildSidebar();
+                    getContentPane().add(sidebarRef, BorderLayout.WEST);
+                    JLayeredPane lp = new JLayeredPane();
+                    JPanel main = buildMain();
+                    lp.add(main, JLayeredPane.DEFAULT_LAYER);
+                    buildFloatingChatbot(lp);
+                    lp.addComponentListener(new ComponentAdapter() {
+                        @Override
+                        public void componentResized(ComponentEvent ev) {
+                            main.setBounds(0, 0, lp.getWidth(), lp.getHeight());
+                            if (chatbotPanel != null && isChatbotOpen)
+                                chatbotPanel.setBounds(lp.getWidth() - 430, lp.getHeight() - 580, 400, 550);
+                            if (chatbotToggleBtn != null && !isChatbotOpen)
+                                chatbotToggleBtn.setBounds(lp.getWidth() - 100, lp.getHeight() - 100, 70, 70);
+                        }
+                    });
+                    getContentPane().add(lp, BorderLayout.CENTER);
+                    getContentPane().revalidate();
+                    getContentPane().repaint();
+                    navigate("Dashboard");
+                }
+            });
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int w = getWidth(), h = getHeight();
+            // Track
+            g2.setColor(isDarkTheme ? new Color(50, 50, 80) : new Color(200, 210, 230));
+            g2.fillRoundRect(0, 2, w, h - 4, h, h);
+            // Knob
+            int knobX = isDarkTheme ? 4 : w - h + 4;
+            g2.setColor(isDarkTheme ? new Color(30, 30, 50) : Color.WHITE);
+            g2.fillOval(knobX, 5, h - 10, h - 10);
+            // Icon
+            g2.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 12));
+            g2.setColor(isDarkTheme ? new Color(200, 200, 255) : new Color(255, 180, 50));
+            g2.drawString(isDarkTheme ? "🌙" : "☀️", isDarkTheme ? 7 : w - h + 7, h - 10);
+            g2.dispose();
         }
     }
 

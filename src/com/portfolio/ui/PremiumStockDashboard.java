@@ -1007,122 +1007,137 @@ public class PremiumStockDashboard extends JFrame {
         scrollPane.setBorder(null);
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         page.add(scrollPane, BorderLayout.CENTER);
-
         return page;
     }
 
     private JPanel createStockCard(String symbol, String name, String price, String change, boolean isPositive,
             String sector, String marketCap) {
-        JPanel card = new RoundedPanel(20); // Rounded corners
-        card.setLayout(new BorderLayout(10, 10));
-        card.setBackground(CARD_BG);
-        card.setBorder(new EmptyBorder(20, 20, 20, 20)); // More padding
-        card.setPreferredSize(new Dimension(0, 200)); // Taller cards
+        RoundedPanel card = new RoundedPanel(20);
+        card.setLayout(new BorderLayout(8, 8));
+        card.setBackground(CARD_BG());
+        card.setBorder(new EmptyBorder(18, 18, 14, 18));
+        card.setPreferredSize(new Dimension(0, 210));
 
-        // Header
-        JPanel header = new JPanel(new BorderLayout());
+        // Hover micro-animation
+        card.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                card.setBackground(CARD_HOVER());
+                card.setBorder(new CompoundBorder(
+                        new LineBorder(ACCENT, 1, true),
+                        new EmptyBorder(17, 17, 13, 17)));
+                card.repaint();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                card.setBackground(CARD_BG());
+                card.setBorder(new EmptyBorder(18, 18, 14, 18));
+                card.repaint();
+            }
+        });
+
+        // === TOP: Symbol + Name + Risk Badge ===
+        JPanel header = new JPanel(new BorderLayout(5, 2));
         header.setOpaque(false);
 
+        JPanel namePanel = new JPanel();
+        namePanel.setLayout(new BoxLayout(namePanel, BoxLayout.Y_AXIS));
+        namePanel.setOpaque(false);
+
         JLabel symbolLabel = new JLabel(symbol);
-        symbolLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        symbolLabel.setForeground(TEXT);
+        symbolLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        symbolLabel.setForeground(TEXT());
 
         JLabel nameLabel = new JLabel(name);
         nameLabel.setFont(FONT_SMALL);
-        nameLabel.setForeground(TEXT_DIM);
+        nameLabel.setForeground(TEXT_DIM());
 
-        JPanel leftPanel = new JPanel();
-        leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
-        leftPanel.setOpaque(false);
-        leftPanel.add(symbolLabel);
-        leftPanel.add(nameLabel);
+        namePanel.add(symbolLabel);
+        namePanel.add(nameLabel);
 
+        // Risk badge
         Color riskColor = GREEN;
-        String risk = "Low Risk";
-        if (Math.abs(Double.parseDouble(change.replace("%", "").replace("+", ""))) > 5) {
-            riskColor = new Color(255, 193, 7);
-            risk = "Med Risk";
-        }
-        if (Math.abs(Double.parseDouble(change.replace("%", "").replace("+", ""))) > 10) {
-            riskColor = RED;
-            risk = "High Risk";
-        }
-        JPanel tagPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        tagPanel.setOpaque(false);
-        tagPanel.add(createTag(risk, riskColor));
+        String risk = "Low";
+        try {
+            double absChange = Math.abs(Double.parseDouble(change.replace("%", "").replace("+", "")));
+            if (absChange > 5) {
+                riskColor = new Color(255, 193, 7);
+                risk = "Med";
+            }
+            if (absChange > 10) {
+                riskColor = RED;
+                risk = "High";
+            }
+        } catch (NumberFormatException ex) {
+            /* fallback */ }
 
-        header.add(tagPanel, BorderLayout.SOUTH);
+        JLabel riskBadge = new JLabel(risk);
+        riskBadge.setFont(new Font("Segoe UI", Font.BOLD, 10));
+        riskBadge.setForeground(riskColor);
+        riskBadge.setHorizontalAlignment(SwingConstants.RIGHT);
 
-        // Tags (Sector & Cap)
-        JPanel tagsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        tagsPanel.setOpaque(false);
+        header.add(namePanel, BorderLayout.WEST);
+        header.add(riskBadge, BorderLayout.EAST);
 
-        if (sector != null)
-            tagsPanel.add(createTag(sector, new Color(50, 50, 80)));
-        if (marketCap != null)
-            tagsPanel.add(createTag(marketCap, new Color(80, 50, 50)));
-
-        leftPanel.add(Box.createVerticalStrut(10));
-        leftPanel.add(tagsPanel);
-
-        // Price info
-        JPanel pricePanel = new JPanel();
-        pricePanel.setLayout(new BoxLayout(pricePanel, BoxLayout.Y_AXIS));
-        pricePanel.setOpaque(false);
+        // === CENTER: Price + Change + Tags ===
+        JPanel centerPanel = new JPanel();
+        centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
+        centerPanel.setOpaque(false);
 
         JLabel priceLabel = new JLabel(price);
-        priceLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        priceLabel.setForeground(TEXT);
+        priceLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        priceLabel.setForeground(TEXT());
         priceLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JLabel changeLabel = new JLabel(change);
-        changeLabel.setFont(FONT_BODY);
+        JLabel changeLabel = new JLabel((isPositive ? "▲ " : "▼ ") + change);
+        changeLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
         changeLabel.setForeground(isPositive ? GREEN : RED);
         changeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        pricePanel.add(priceLabel);
-        pricePanel.add(changeLabel);
+        centerPanel.add(priceLabel);
+        centerPanel.add(changeLabel);
 
-        // Mini chart placeholder
-        JPanel chartPanel = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                Graphics2D g2 = (Graphics2D) g;
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // Sector/Cap tags
+        if (sector != null || marketCap != null) {
+            JPanel tagsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 4));
+            tagsPanel.setOpaque(false);
+            tagsPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            if (sector != null)
+                tagsPanel.add(createTag(sector, isDarkTheme ? new Color(50, 50, 80) : new Color(200, 210, 240)));
+            if (marketCap != null)
+                tagsPanel.add(createTag(marketCap, isDarkTheme ? new Color(80, 50, 50) : new Color(240, 210, 210)));
+            centerPanel.add(tagsPanel);
+        }
 
-                g2.setColor(isPositive ? GREEN : RED);
-                g2.setStroke(new BasicStroke(2));
+        // === BOTTOM: SparklinePanel + View Chart button ===
+        JPanel bottomPanel = new JPanel(new BorderLayout(8, 0));
+        bottomPanel.setOpaque(false);
 
-                int[] xPoints = new int[20];
-                int[] yPoints = new int[20];
-                Random rand = new Random(symbol.hashCode());
+        // Smooth sparkline with gradient
+        double currentPrice = 100.0;
+        try {
+            currentPrice = Double.parseDouble(price.replaceAll("[^\\d.]", ""));
+        } catch (Exception ex) {
+        }
+        SparklinePanel sparkline = new SparklinePanel(generateSparklineData(symbol, currentPrice));
+        sparkline.setPreferredSize(new Dimension(0, 50));
 
-                for (int i = 0; i < 20; i++) {
-                    xPoints[i] = i * (getWidth() / 19);
-                    yPoints[i] = getHeight() / 2 + (rand.nextInt(40) - 20);
-                }
-
-                for (int i = 0; i < 19; i++) {
-                    g2.drawLine(xPoints[i], yPoints[i], xPoints[i + 1], yPoints[i + 1]);
-                }
-            }
-        };
-        chartPanel.setBackground(CARD_BG);
-        chartPanel.setPreferredSize(new Dimension(0, 60));
-
-        // View button
         JButton viewBtn = createStyledButton("View Chart", ACCENT);
+        viewBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        viewBtn.setPreferredSize(new Dimension(90, 28));
         viewBtn.addActionListener(e -> showStockChart(symbol));
 
-        card.add(header, BorderLayout.NORTH);
-        card.add(pricePanel, BorderLayout.CENTER);
-        card.add(chartPanel, BorderLayout.SOUTH);
+        JPanel btnWrap = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        btnWrap.setOpaque(false);
+        btnWrap.add(viewBtn);
 
-        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 5));
-        bottomPanel.setOpaque(false);
-        bottomPanel.add(viewBtn);
-        card.add(bottomPanel, BorderLayout.PAGE_END);
+        bottomPanel.add(sparkline, BorderLayout.CENTER);
+        bottomPanel.add(btnWrap, BorderLayout.EAST);
+
+        card.add(header, BorderLayout.NORTH);
+        card.add(centerPanel, BorderLayout.CENTER);
+        card.add(bottomPanel, BorderLayout.SOUTH);
 
         return card;
     }

@@ -12,6 +12,7 @@ public class PortfolioService {
     // Private variables - the data this service manages
     private List<PortfolioItem> portfolioItems; // List of all stocks you own (ex: [Apple x10, Tesla x5])
     private List<Transaction> transactions; // List of all buy/sell transactions (history)
+    private List<Stock> watchlist; // NEW: Watchlist of stocks
     private StockPriceService priceService; // The service that gets real stock prices
     private com.portfolio.database.PortfolioDAO portfolioDAO; // Database access object for saving/loading data
     private CurrencyService currencyService; // Service for live exchange rates
@@ -22,6 +23,7 @@ public class PortfolioService {
     public PortfolioService(StockPriceService priceService) {
         this.portfolioItems = new ArrayList<>(); // Create empty list for portfolio items
         this.transactions = new ArrayList<>(); // Create empty list for transactions
+        this.watchlist = new ArrayList<>(); // Create empty list for watchlist
         this.priceService = priceService; // Store the price service to use later
         this.portfolioDAO = new com.portfolio.database.PortfolioDAO(); // Create database access object
         this.currencyService = new CurrencyService(); // Initialize currency service
@@ -43,11 +45,40 @@ public class PortfolioService {
             transactions = portfolioDAO.loadAllTransactions();
             System.out.println("✅ Loaded " + transactions.size() + " transactions from database");
 
+            // Load watchlist from database
+            watchlist = portfolioDAO.loadWatchlist();
+            System.out.println("✅ Loaded " + watchlist.size() + " watchlist items from database");
+
         } catch (Exception e) {
             // If loading fails, start with empty lists
             System.err.println("⚠️ Could not load from database: " + e.getMessage());
             portfolioItems = new ArrayList<>();
             transactions = new ArrayList<>();
+            watchlist = new ArrayList<>();
+        }
+    }
+
+    public List<Stock> getWatchlist() {
+        return watchlist;
+    }
+
+    public void addToWatchlist(String symbol, String name) {
+        try {
+            portfolioDAO.addToWatchlist(symbol, name);
+            watchlist.add(new Stock(symbol, name));
+            System.out.println("⭐ Added to watchlist: " + symbol);
+        } catch (Exception e) {
+            System.err.println("❌ Error adding to watchlist: " + e.getMessage());
+        }
+    }
+
+    public void removeFromWatchlist(String symbol) {
+        try {
+            portfolioDAO.removeFromWatchlist(symbol);
+            watchlist.removeIf(s -> s.getSymbol().equalsIgnoreCase(symbol));
+            System.out.println("🗑️ Removed from watchlist: " + symbol);
+        } catch (Exception e) {
+            System.err.println("❌ Error removing from watchlist: " + e.getMessage());
         }
     }
 
@@ -319,5 +350,42 @@ public class PortfolioService {
         java.util.List<PortfolioItem> items = new java.util.ArrayList<>(getPortfolioItems());
         items.sort((a, b) -> Double.compare(a.getStock().getChangePercent(), b.getStock().getChangePercent()));
         return items.subList(0, Math.min(limit, items.size()));
+    }
+
+    public double calculateSharpeRatio() {
+        if (portfolioItems.isEmpty())
+            return 0;
+        double totalReturn = 0;
+        for (PortfolioItem item : portfolioItems) {
+            double ret = (item.getStock().getCurrentPrice() - item.getPurchasePrice()) / item.getPurchasePrice();
+            totalReturn += ret;
+        }
+        double avgReturn = totalReturn / portfolioItems.size();
+        // Mock volatility for demo
+        double mockVolatility = 0.15;
+        double riskFreeRate = 0.05;
+        return (avgReturn - riskFreeRate) / mockVolatility;
+    }
+
+    public double calculatePortfolioBeta() {
+        if (portfolioItems.isEmpty())
+            return 1.0;
+        double weightedBeta = 0;
+        double totalVal = calculateCurrentValue();
+        for (PortfolioItem item : portfolioItems) {
+            // Mock Beta based on sector
+            double beta = 1.0;
+            String sector = item.getStock().getSector();
+            if ("IT & Tech".equals(sector))
+                beta = 1.3;
+            else if ("Banking & Finance".equals(sector))
+                beta = 1.1;
+            else if ("Healthcare".equals(sector))
+                beta = 0.8;
+
+            double weight = item.getTotalValue() / totalVal;
+            weightedBeta += beta * weight;
+        }
+        return weightedBeta;
     }
 }

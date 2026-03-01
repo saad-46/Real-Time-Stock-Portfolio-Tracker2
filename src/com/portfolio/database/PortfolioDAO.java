@@ -278,4 +278,38 @@ public class PortfolioDAO {
 
         return transactions;
     }
+
+    public void addToWatchlist(String symbol, String name) throws SQLException {
+        String sql = "INSERT OR REPLACE INTO watchlist (symbol, name) VALUES (?, ?)";
+        Connection conn = DatabaseManager.getConnection();
+        PreparedStatement pstmt = conn.prepareStatement(sql);
+        pstmt.setString(1, symbol);
+        pstmt.setString(2, name);
+        pstmt.executeUpdate();
+        pstmt.close();
+    }
+
+    public void removeFromWatchlist(String symbol) throws SQLException {
+        String sql = "DELETE FROM watchlist WHERE symbol = ?";
+        Connection conn = DatabaseManager.getConnection();
+        PreparedStatement pstmt = conn.prepareStatement(sql);
+        pstmt.setString(1, symbol);
+        pstmt.executeUpdate();
+        pstmt.close();
+    }
+
+    public List<Stock> loadWatchlist() throws SQLException {
+        List<Stock> watchlist = new ArrayList<>();
+        String sql = "SELECT * FROM watchlist";
+        Connection conn = DatabaseManager.getConnection();
+        Statement stmt = conn.createStatement();
+        ResultSet rs = stmt.executeQuery(sql);
+        while (rs.next()) {
+            Stock stock = new Stock(rs.getString("symbol"), rs.getString("name"));
+            watchlist.add(stock);
+        }
+        rs.close();
+        stmt.close();
+        return watchlist;
+    }
 }

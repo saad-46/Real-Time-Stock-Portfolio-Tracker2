@@ -130,6 +130,15 @@ public class DatabaseManager {
             stmt.execute(createTransactionsTable);
             System.out.println("✅ Transactions table ready");
 
+            // ===== CREATE WATCHLIST TABLE =====
+            String createWatchlistTable = "CREATE TABLE IF NOT EXISTS watchlist (" +
+                    "    symbol TEXT PRIMARY KEY," +
+                    "    name TEXT," +
+                    "    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                    ")";
+            stmt.execute(createWatchlistTable);
+            System.out.println("✅ Watchlist table ready");
+
             // Close statement (good practice to free resources)
             stmt.close();
 

@@ -708,25 +708,37 @@ public class PremiumStockDashboard extends JFrame {
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.setBorder(new EmptyBorder(25, 25, 25, 25));
 
-        // Action buttons
-        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        actionPanel.setBackground(BG);
-        actionPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
+        // Advanced Metrics Header
+        JPanel metricsPanel = new JPanel(new GridLayout(1, 4, 20, 0));
+        metricsPanel.setOpaque(false);
+        metricsPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
 
-        RoundedButton addBtn = new RoundedButton("➕ Add Stock", 15); // ROUNDED!
-        addBtn.setFont(new Font("Segoe UI", Font.BOLD, 15));
-        addBtn.setForeground(Color.WHITE);
-        addBtn.setBackground(ACCENT);
-        addBtn.setPreferredSize(new Dimension(150, 45));
-        addBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        double sharpe = portfolioService.calculateSharpeRatio();
+        double beta = portfolioService.calculatePortfolioBeta();
+        double totalVal = portfolioService.calculateCurrentValue();
+
+        metricsPanel.add(createStatCard("Sharpe Ratio", String.format("%.2f", sharpe),
+                sharpe > 1 ? GREEN : (sharpe > 0 ? ACCENT : RED)));
+        metricsPanel.add(createStatCard("Portfolio Beta", String.format("%.2f", beta),
+                Math.abs(beta - 1.0) < 0.2 ? GREEN : ACCENT));
+        metricsPanel.add(createStatCard("Risk Level", beta > 1.2 ? "High" : (beta > 0.8 ? "Medium" : "Low"),
+                beta > 1.2 ? RED : (beta > 0.8 ? ACCENT : GREEN)));
+        metricsPanel.add(createStatCard("Market Share", String.format("%.1f%%", (totalVal / 1000000) * 100), ACCENT)); // Mock
+                                                                                                                       // market
+                                                                                                                       // share
+
+        content.add(metricsPanel);
+        content.add(Box.createVerticalStrut(25));
+
+        // Action buttons
+        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+        actionPanel.setBackground(BG());
+        actionPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 55));
+
+        JButton addBtn = createStyledButton("➕ Add Asset", ACCENT);
         addBtn.addActionListener(e -> showAddStockDialog());
 
-        RoundedButton refreshBtn = new RoundedButton("🔄 Refresh Prices", 15); // ROUNDED!
-        refreshBtn.setFont(new Font("Segoe UI", Font.BOLD, 15));
-        refreshBtn.setForeground(Color.WHITE);
-        refreshBtn.setBackground(ACCENT2);
-        refreshBtn.setPreferredSize(new Dimension(180, 45));
-        refreshBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        JButton refreshBtn = createStyledButton("🔄 Refresh Hub", ACCENT2);
         refreshBtn.addActionListener(e -> refreshPrices());
 
         actionPanel.add(addBtn);
@@ -1245,24 +1257,89 @@ public class PremiumStockDashboard extends JFrame {
 
     private JPanel buildWatchlistPage() {
         JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(BG);
+        page.setBackground(BG());
 
         JPanel content = new JPanel();
-        content.setBackground(BG);
+        content.setBackground(BG());
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.setBorder(new EmptyBorder(25, 25, 25, 25));
 
-        JPanel card = createCard("Your Watchlist");
+        // Search to Add Bar
+        JPanel searchPanel = createCard("Add to Watchlist");
+        searchPanel.setLayout(new BorderLayout(15, 0));
+        searchPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
 
-        JLabel placeholder = new JLabel("⭐ Add stocks to your watchlist to track them");
-        placeholder.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 16));
-        placeholder.setForeground(TEXT_DIM);
-        placeholder.setHorizontalAlignment(SwingConstants.CENTER);
+        JTextField searchField = createInputField("Enter symbol (e.g. BTC, ETH, TSLA)...");
+        JButton addBtn = createStyledButton("➕ Add to Watch", ACCENT);
 
-        card.add(placeholder, BorderLayout.CENTER);
-        content.add(card);
+        addBtn.addActionListener(e -> {
+            String sym = searchField.getText().trim().toUpperCase();
+            if (!sym.isEmpty()) {
+                portfolioService.addToWatchlist(sym, sym);
+                searchField.setText("");
+                refreshAllViews();
+            }
+        });
 
-        page.add(content, BorderLayout.CENTER);
+        searchPanel.add(searchField, BorderLayout.CENTER);
+        searchPanel.add(addBtn, BorderLayout.EAST);
+        content.add(searchPanel);
+        content.add(Box.createVerticalStrut(20));
+
+        // Watchlist Table
+        JPanel tableCard = createCard("Tracked Symbols");
+        String[] columns = { "Symbol", "Name", "Price", "Change %", "Trend" };
+        DefaultTableModel model = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int r, int c) {
+                return false;
+            }
+        };
+
+        for (Stock s : portfolioService.getWatchlist()) {
+            double price = s.getCurrentPrice();
+            double change = s.getChangePercent();
+            // Generate random sparkline data for demo if no history
+            double[] sparkData = new double[10];
+            Random rand = new Random();
+            sparkData[0] = price * (1 - (change / 100));
+            for (int i = 1; i < 10; i++)
+                sparkData[i] = sparkData[i - 1] * (1 + (rand.nextDouble() - 0.5) * 0.02);
+            sparkData[9] = price;
+
+            model.addRow(new Object[] {
+                    s.getSymbol(), s.getName(), formatCurrency(price),
+                    String.format("%+.2f%%", change), sparkData
+            });
+        }
+
+        JTable table = createStyledTable(model);
+        table.getColumnModel().getColumn(4).setCellRenderer(new SparklineCellRenderer());
+        table.setRowHeight(40);
+
+        // Add Right-Click to Remove
+        table.addMouseListener(new MouseAdapter() {
+            public void mouseReleased(MouseEvent e) {
+                int r = table.rowAtPoint(e.getPoint());
+                if (r >= 0 && r < table.getRowCount() && SwingUtilities.isRightMouseButton(e)) {
+                    String sym = (String) table.getValueAt(r, 0);
+                    int choice = JOptionPane.showConfirmDialog(PremiumStockDashboard.this,
+                            "Remove " + sym + " from watchlist?", "Confirm", JOptionPane.YES_NO_OPTION);
+                    if (choice == JOptionPane.YES_OPTION) {
+                        portfolioService.removeFromWatchlist(sym);
+                        refreshAllViews();
+                    }
+                }
+            }
+        });
+
+        JScrollPane scroll = new JScrollPane(table);
+        scroll.setBorder(null);
+        scroll.getViewport().setBackground(CARD_BG);
+        tableCard.add(scroll, BorderLayout.CENTER);
+
+        content.add(tableCard);
+        page.add(new JScrollPane(content), BorderLayout.CENTER);
         return page;
     }
 
@@ -1730,45 +1807,88 @@ public class PremiumStockDashboard extends JFrame {
 
     private JPanel buildSettingsPage() {
         JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(BG);
+        page.setBackground(BG());
 
         JPanel content = new JPanel();
-        content.setBackground(BG);
+        content.setBackground(BG());
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(new EmptyBorder(25, 25, 25, 25));
+        content.setBorder(new EmptyBorder(30, 40, 30, 40));
 
-        JPanel card = createCard("Settings");
-        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBorder(new CompoundBorder(
-                new LineBorder(BORDER, 1, true),
-                new EmptyBorder(20, 20, 20, 20)));
+        // Group 1: Display & Appearance
+        content.add(createSettingsSection("🎨 Display & Appearance", new String[][] {
+                { "Dark Mode", "Toggle institutional dark/light interface", "SWITCH" },
+                { "Compact View", "Maximize data density on screens", "CHECK" },
+                { "Animations", "Enable smooth UI transitions", "CHECK" }
+        }));
+        content.add(Box.createVerticalStrut(25));
 
-        JLabel title = new JLabel("⚙️ Application Settings");
-        title.setFont(new Font("Segoe UI Emoji", Font.BOLD, 18));
-        title.setForeground(TEXT);
-        title.setAlignmentX(Component.LEFT_ALIGNMENT);
-        card.add(title);
-        card.add(Box.createVerticalStrut(20));
+        // Group 2: Data & APIs
+        content.add(createSettingsSection("🔌 Data & Advanced APIs", new String[][] {
+                { "Real-time Feed", "WebSocket-based live price updates", "SWITCH" },
+                { "API Provider", "AlphaVantage / Yahoo Finance", "COMBO" },
+                { "Groq AI Assistant", "Neural analysis of portfolio", "SWITCH" }
+        }));
+        content.add(Box.createVerticalStrut(25));
 
-        String[] settings = {
-                "Currency: Indian Rupee (₹)",
-                "Theme: Dark Mode",
-                "Auto-refresh: Enabled",
-                "Notifications: Enabled"
-        };
+        // Group 3: Localization
+        content.add(createSettingsSection("🌍 Localization & Units", new String[][] {
+                { "Currency", "Select base portfolio currency", "COMBO" },
+                { "Number Format", "International (1.2M) / Indian (12L)", "COMBO" },
+                { "Timezone", "Automatic (ST) / UTC / Local", "COMBO" }
+        }));
 
-        for (String setting : settings) {
-            JLabel label = new JLabel("• " + setting);
-            label.setFont(FONT_BODY);
-            label.setForeground(TEXT_DIM);
-            label.setAlignmentX(Component.LEFT_ALIGNMENT);
-            card.add(label);
-            card.add(Box.createVerticalStrut(10));
-        }
-
-        content.add(card);
-        page.add(content, BorderLayout.CENTER);
+        JScrollPane scroll = new JScrollPane(content);
+        scroll.setBorder(null);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        page.add(scroll, BorderLayout.CENTER);
         return page;
+    }
+
+    private JPanel createSettingsSection(String title, String[][] options) {
+        JPanel section = createCard(title);
+        section.setLayout(new BoxLayout(section, BoxLayout.Y_AXIS));
+
+        for (String[] opt : options) {
+            JPanel row = new JPanel(new BorderLayout());
+            row.setOpaque(false);
+            row.setBorder(new EmptyBorder(12, 0, 12, 0));
+
+            JPanel textPart = new JPanel(new GridLayout(2, 1, 0, 2));
+            textPart.setOpaque(false);
+            JLabel name = new JLabel(opt[0]);
+            name.setFont(new Font("Segoe UI", Font.BOLD, 15));
+            name.setForeground(TEXT());
+            JLabel desc = new JLabel(opt[1]);
+            desc.setFont(FONT_SMALL);
+            desc.setForeground(TEXT_DIM());
+            textPart.add(name);
+            textPart.add(desc);
+
+            row.add(textPart, BorderLayout.CENTER);
+
+            if ("SWITCH".equals(opt[2])) {
+                row.add(new ThemeToggle(), BorderLayout.EAST);
+            } else if ("CHECK".equals(opt[2])) {
+                JCheckBox cb = new JCheckBox();
+                cb.setSelected(true);
+                cb.setOpaque(false);
+                row.add(cb, BorderLayout.EAST);
+            } else if ("COMBO".equals(opt[2])) {
+                String[] vals = { "Default", "Alternative" };
+                if (opt[0].contains("Currency"))
+                    vals = new String[] { "INR (₹)", "USD ($)", "EUR (€)" };
+                JComboBox<String> combo = new JComboBox<>(vals);
+                combo.setPreferredSize(new Dimension(120, 30));
+                row.add(combo, BorderLayout.EAST);
+            }
+
+            section.add(row);
+            JSeparator sep = new JSeparator();
+            sep.setForeground(BORDER());
+            sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+            section.add(sep);
+        }
+        return section;
     }
 
     // ═══════════════════════════════════════════════════════════════════════

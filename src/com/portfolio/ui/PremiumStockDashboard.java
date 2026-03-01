@@ -20,9 +20,6 @@ import org.jfree.chart.renderer.xy.*;
 import org.jfree.data.xy.*;
 import org.jfree.data.category.*;
 import org.jfree.data.general.*;
-import org.jfree.data.category.*;
-import org.jfree.data.xy.*;
-import org.jfree.data.general.*;
 
 /**
  * Premium Stock Portfolio Dashboard - Pure Java Swing

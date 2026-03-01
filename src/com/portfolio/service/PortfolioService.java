@@ -32,6 +32,22 @@ public class PortfolioService {
 
         // Load existing data from database when service starts
         loadFromDatabase();
+        startVolatilityTimer();
+    }
+
+    private void startVolatilityTimer() {
+        new javax.swing.Timer(30000, e -> {
+            for (PortfolioItem item : portfolioItems) {
+                double change = (Math.random() - 0.48) * 0.01; // -0.48% to +0.52%
+                double newPrice = item.getStock().getCurrentPrice() * (1 + change);
+                item.getStock().setCurrentPrice(newPrice);
+            }
+            for (Stock s : watchlist) {
+                double change = (Math.random() - 0.48) * 0.01;
+                double newPrice = s.getCurrentPrice() * (1 + change);
+                s.setCurrentPrice(newPrice);
+            }
+        }).start();
     }
 
     // Loads all portfolio data from database

@@ -1320,34 +1320,39 @@ public class PremiumStockDashboard extends JFrame {
 
     private JPanel buildAnalyticsPage() {
         JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(BG);
+        page.setBackground(BG());
 
         JPanel content = new JPanel(new GridBagLayout());
-        content.setBackground(BG);
+        content.setBackground(BG());
         content.setBorder(new EmptyBorder(25, 25, 25, 25));
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weightx = 1.0;
         gbc.weighty = 1.0;
-        gbc.insets = new Insets(10, 10, 10, 10);
+        gbc.insets = new Insets(12, 12, 12, 12);
 
-        // Top Row
+        // Top Row: Sector Allocation & Cost vs Value
         gbc.gridx = 0;
         gbc.gridy = 0;
-        content.add(createPortfolioDistributionChart(), gbc);
+        content.add(createStyledChartPanel(createSectorAllocationChart()), gbc);
+
         gbc.gridx = 1;
         gbc.gridy = 0;
-        content.add(createProfitLossChart(), gbc);
+        content.add(createStyledChartPanel(createCostVsValueChart()), gbc);
 
-        // Bottom Row
+        // Bottom Row: Stock Performance Heatmap & Total Value Trend
         gbc.gridx = 0;
         gbc.gridy = 1;
-        content.add(createStockValueChart(), gbc);
+        content.add(createPerformanceHeatmap(), gbc);
+
         gbc.gridx = 1;
         gbc.gridy = 1;
-        content.add(createPerformanceHeatmap(), gbc); // NEW HEATMAP!
+        content.add(createStockValueChart(), gbc); // FIX: Already returns ChartPanel
 
-        page.add(content, BorderLayout.CENTER);
+        JScrollPane scroll = new JScrollPane(content);
+        scroll.setBorder(null);
+        scroll.setBackground(BG());
+        page.add(scroll, BorderLayout.CENTER);
         return page;
     }
 
@@ -1387,58 +1392,49 @@ public class PremiumStockDashboard extends JFrame {
         return card;
     }
 
-    private ChartPanel createPortfolioDistributionChart() {
+    private JFreeChart createSectorAllocationChart() {
         org.jfree.data.general.DefaultPieDataset dataset = new org.jfree.data.general.DefaultPieDataset();
+        Map<String, Double> sectorMap = new HashMap<>();
 
-        List<PortfolioItem> items = portfolioService.getPortfolioItems();
-        if (items.isEmpty()) {
+        for (PortfolioItem item : portfolioService.getPortfolioItems()) {
+            String sector = item.getStock().getSector();
+            if (sector == null || sector.isEmpty())
+                sector = "Other";
+            sectorMap.put(sector, sectorMap.getOrDefault(sector, 0.0) + item.getTotalValue());
+        }
+
+        if (sectorMap.isEmpty()) {
             dataset.setValue("No Data", 1);
         } else {
-            for (PortfolioItem item : items) {
-                dataset.setValue(item.getStock().getSymbol(), item.getTotalValue());
-            }
+            sectorMap.forEach(dataset::setValue);
         }
 
-        JFreeChart chart = ChartFactory.createPieChart(
-                "Portfolio Distribution",
-                dataset, true, true, false);
-
+        JFreeChart chart = ChartFactory.createPieChart("Sector Allocation", dataset, true, true, false);
         styleChart(chart);
-        return new ChartPanel(chart);
+        return chart;
     }
 
-    private ChartPanel createProfitLossChart() {
-        org.jfree.data.general.DefaultPieDataset dataset = new org.jfree.data.general.DefaultPieDataset();
+    private JFreeChart createCostVsValueChart() {
+        org.jfree.data.category.DefaultCategoryDataset dataset = new org.jfree.data.category.DefaultCategoryDataset();
 
-        double totalProfit = 0;
-        double totalLoss = 0;
-
-        List<PortfolioItem> items = portfolioService.getPortfolioItems();
-        for (PortfolioItem item : items) {
-            double gainLoss = item.getGainLoss();
-            if (gainLoss > 0)
-                totalProfit += gainLoss;
-            else
-                totalLoss += Math.abs(gainLoss);
+        for (PortfolioItem item : portfolioService.getPortfolioItems()) {
+            String sym = item.getStock().getSymbol();
+            dataset.addValue(item.getPurchasePrice() * item.getQuantity(), "Cost Basis", sym);
+            dataset.addValue(item.getTotalValue(), "Market Value", sym);
         }
 
-        if (totalProfit > 0)
-            dataset.setValue("Profit", totalProfit);
-        if (totalLoss > 0)
-            dataset.setValue("Loss", totalLoss);
-        if (totalProfit == 0 && totalLoss == 0)
-            dataset.setValue("No Change", 1);
-
-        JFreeChart chart = ChartFactory.createPieChart(
-                "Profit vs Loss",
-                dataset, true, true, false);
+        JFreeChart chart = ChartFactory.createBarChart(
+                "Cost vs Market Value", "Stock", "Value (" + getCurrencySymbol() + ")",
+                dataset, org.jfree.chart.plot.PlotOrientation.VERTICAL, true, true, false);
 
         styleChart(chart);
-        org.jfree.chart.plot.PiePlot plot = (org.jfree.chart.plot.PiePlot) chart.getPlot();
-        plot.setSectionPaint("Profit", GREEN);
-        plot.setSectionPaint("Loss", RED);
+        CategoryPlot plot = (CategoryPlot) chart.getPlot();
+        org.jfree.chart.renderer.category.BarRenderer renderer = (org.jfree.chart.renderer.category.BarRenderer) plot
+                .getRenderer();
+        renderer.setSeriesPaint(0, ACCENT);
+        renderer.setSeriesPaint(1, ACCENT2);
 
-        return createStyledChartPanel(chart);
+        return chart;
     }
 
     private ChartPanel createStyledChartPanel(JFreeChart chart) {
@@ -1495,44 +1491,49 @@ public class PremiumStockDashboard extends JFrame {
     }
 
     private void styleChart(JFreeChart chart) {
-        chart.setBackgroundPaint(CARD_BG);
-        chart.getTitle().setPaint(TEXT);
+        chart.setBackgroundPaint(CARD_BG());
+        chart.getTitle().setPaint(TEXT());
         chart.getTitle().setFont(FONT_HEADING);
+        chart.setBorderVisible(false);
 
         org.jfree.chart.plot.Plot plot = chart.getPlot();
-        plot.setBackgroundPaint(BG);
+        plot.setBackgroundPaint(BG());
         plot.setOutlineVisible(false);
 
         if (plot instanceof org.jfree.chart.plot.PiePlot) {
             org.jfree.chart.plot.PiePlot piePlot = (org.jfree.chart.plot.PiePlot) plot;
             piePlot.setLabelFont(FONT_SMALL);
-            piePlot.setLabelPaint(TEXT);
+            piePlot.setLabelPaint(TEXT());
             piePlot.setShadowPaint(null);
             piePlot.setOutlineVisible(false);
+            piePlot.setBackgroundPaint(null);
+            piePlot.setLabelBackgroundPaint(null);
+            piePlot.setLabelOutlinePaint(null);
+            piePlot.setLabelShadowPaint(null);
         } else if (plot instanceof CategoryPlot) {
             CategoryPlot catPlot = (CategoryPlot) plot;
-            catPlot.setRangeGridlinePaint(BORDER);
-            catPlot.getDomainAxis().setLabelPaint(TEXT);
-            catPlot.getDomainAxis().setTickLabelPaint(TEXT);
-            catPlot.getRangeAxis().setLabelPaint(TEXT);
-            catPlot.getRangeAxis().setTickLabelPaint(TEXT);
+            catPlot.setRangeGridlinePaint(BORDER());
+            catPlot.getDomainAxis().setLabelPaint(TEXT());
+            catPlot.getDomainAxis().setTickLabelPaint(TEXT());
+            catPlot.getRangeAxis().setLabelPaint(TEXT());
+            catPlot.getRangeAxis().setTickLabelPaint(TEXT());
 
             org.jfree.chart.renderer.category.BarRenderer renderer = (org.jfree.chart.renderer.category.BarRenderer) catPlot
                     .getRenderer();
-            renderer.setSeriesPaint(0, ACCENT);
             renderer.setShadowVisible(false);
             renderer.setDrawBarOutline(false);
+            renderer.setItemMargin(0.1);
         } else if (plot instanceof org.jfree.chart.plot.XYPlot) {
             org.jfree.chart.plot.XYPlot xyPlot = (org.jfree.chart.plot.XYPlot) plot;
-            xyPlot.setRangeGridlinePaint(BORDER);
-            xyPlot.getDomainAxis().setLabelPaint(TEXT);
-            xyPlot.getDomainAxis().setTickLabelPaint(TEXT);
-            xyPlot.getRangeAxis().setLabelPaint(TEXT);
-            xyPlot.getRangeAxis().setTickLabelPaint(TEXT);
+            xyPlot.setRangeGridlinePaint(BORDER());
+            xyPlot.getDomainAxis().setLabelPaint(TEXT());
+            xyPlot.getDomainAxis().setTickLabelPaint(TEXT());
+            xyPlot.getRangeAxis().setLabelPaint(TEXT());
+            xyPlot.getRangeAxis().setTickLabelPaint(TEXT());
 
             org.jfree.chart.renderer.xy.XYLineAndShapeRenderer renderer = new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer();
-            renderer.setSeriesPaint(0, GREEN);
-            renderer.setSeriesStroke(0, new BasicStroke(2.0f));
+            renderer.setSeriesPaint(0, ACCENT);
+            renderer.setSeriesStroke(0, new BasicStroke(3.0f));
             xyPlot.setRenderer(renderer);
         }
     }
@@ -1566,15 +1567,15 @@ public class PremiumStockDashboard extends JFrame {
 
     private JPanel buildReportsPage() {
         JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(BG);
+        page.setBackground(BG());
 
         JPanel content = new JPanel();
-        content.setBackground(BG);
+        content.setBackground(BG());
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(new EmptyBorder(25, 25, 25, 25));
+        content.setBorder(new EmptyBorder(30, 40, 30, 40));
 
         // Summary Cards for Report
-        JPanel summaryPanel = new JPanel(new GridLayout(1, 3, 20, 0));
+        JPanel summaryPanel = new JPanel(new GridLayout(1, 3, 25, 0));
         summaryPanel.setOpaque(false);
         summaryPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
 
@@ -1661,49 +1662,69 @@ public class PremiumStockDashboard extends JFrame {
 
     private void printPortfolioStatement() {
         try {
-            String filename = "Portfolio_Statement_" + System.currentTimeMillis() + ".txt";
+            String filename = "StockVault_Report_" + System.currentTimeMillis() + ".html";
             java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.File(filename));
 
-            writer.println("=================================================");
-            writer.println("        STOCKVAULT PORTFOLIO STATEMENT");
-            writer.println("        Date: " + java.time.LocalDateTime.now());
-            writer.println("=================================================");
-            writer.println();
+            writer.println("<!DOCTYPE html><html><head><title>StockVault Portfolio Statement</title>");
+            writer.println("<style>");
+            writer.println(
+                    "body { font-family: 'Inter', sans-serif; background: #0f0f12; color: #fff; padding: 40px; }");
+            writer.println(".header { border-bottom: 2px solid #667eea; padding-bottom: 20px; margin-bottom: 30px; }");
+            writer.println("h1 { margin: 0; color: #667eea; font-weight: 800; letter-spacing: -1px; }");
+            writer.println(".date { color: #888; font-size: 14px; }");
+            writer.println("table { width: 100%; border-collapse: collapse; margin-top: 20px; }");
+            writer.println(
+                    "th { text-align: left; padding: 12px; background: #1a1a2e; color: #667eea; text-transform: uppercase; font-size: 12px; }");
+            writer.println("td { padding: 12px; border-bottom: 1px solid #222; font-size: 14px; }");
+            writer.println(".profit { color: #4ade80; } .loss { color: #f87171; }");
+            writer.println(
+                    ".summary { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }");
+            writer.println(
+                    ".card { background: #1a1a2e; padding: 20px; border-radius: 12px; border: 1px solid #334; }");
+            writer.println(".card label { display: block; color: #888; font-size: 12px; margin-bottom: 5px; }");
+            writer.println(".card value { font-size: 24px; font-weight: 700; }");
+            writer.println("</style></head><body>");
 
-            double totalInv = 0;
-            double currentVal = 0;
+            writer.println("<div class='header'><h1>STOCKVAULT</h1><div class='date'>Generated on: "
+                    + java.time.LocalDateTime.now() + "</div></div>");
 
-            writer.printf("%-10s %-20s %-8s %-12s %-12s\n", "Symbol", "Name", "Qty", "Buy Price", "Current");
-            writer.println("-------------------------------------------------");
+            writer.println(
+                    "<table><thead><tr><th>Symbol</th><th>Company</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>P/L</th></tr></thead><tbody>");
 
+            double totalInv = 0, currentVal = 0;
             for (com.portfolio.model.PortfolioItem item : portfolioService.getPortfolioItems()) {
-                writer.printf("%-10s %-20s %-8d %-12.2f %-12.2f\n",
-                        item.getStock().getSymbol(),
-                        item.getStock().getName(),
-                        item.getQuantity(),
-                        item.getPurchasePrice(),
-                        item.getStock().getCurrentPrice());
+                double pl = item.getGainLoss();
+                writer.printf(
+                        "<tr><td><b>%s</b></td><td>%s</td><td>%d</td><td>%s %.2f</td><td>%s %.2f</td><td>%s %.2f</td><td class='%s'>%+.2f%%</td></tr>",
+                        item.getStock().getSymbol(), item.getStock().getName(), item.getQuantity(),
+                        getCurrencySymbol(), item.getPurchasePrice(), getCurrencySymbol(),
+                        item.getStock().getCurrentPrice(),
+                        getCurrencySymbol(), item.getTotalValue(), pl >= 0 ? "profit" : "loss",
+                        (pl / (item.getQuantity() * item.getPurchasePrice())) * 100);
 
                 totalInv += item.getQuantity() * item.getPurchasePrice();
                 currentVal += item.getTotalValue();
             }
+            writer.println("</tbody></table>");
 
-            writer.println("-------------------------------------------------");
-            writer.printf("Total Investment: %s %.2f\n", getCurrencySymbol(), totalInv);
-            writer.printf("Current Value:    %s %.2f\n", getCurrencySymbol(), currentVal);
-            writer.printf("Net Profit/Loss:  %s %.2f\n", getCurrencySymbol(), (currentVal - totalInv));
-            writer.println("=================================================");
+            double totalPL = currentVal - totalInv;
+            writer.println("<div class='summary'>");
+            writer.println(
+                    "<div class='card'><label>INVESTED</label><value>" + formatCurrency(totalInv) + "</value></div>");
+            writer.println("<div class='card'><label>MARKET VALUE</label><value style='color:#667eea'>"
+                    + formatCurrency(currentVal) + "</value></div>");
+            writer.println("<div class='card'><label>TOTAL P/L</label><value class='"
+                    + (totalPL >= 0 ? "profit" : "loss") + "'>" + formatCurrency(totalPL) + "</value></div>");
+            writer.println("</div></body></html>");
 
             writer.close();
-            JOptionPane.showMessageDialog(this,
-                    "Portfolio Statement generated: " + filename + "\n(Simulated PDF as formatted Text)");
+            JOptionPane.showMessageDialog(this, "Premium Statement generated: " + filename);
 
-            // Open the file automatically
             if (Desktop.isDesktopSupported()) {
-                Desktop.getDesktop().open(new java.io.File(filename));
+                Desktop.getDesktop().browse(new java.io.File(filename).toURI());
             }
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Error printing statement: " + e.getMessage());
+            JOptionPane.showMessageDialog(this, "Error generating report: " + e.getMessage());
         }
     }
 
@@ -2292,45 +2313,55 @@ public class PremiumStockDashboard extends JFrame {
      * Process AI conversation (text or voice)
      */
     private void processAIConversation(String userMessage, JTextArea conversationArea) {
-        // Add user message to conversation
         conversationArea.append("\n\n👤 You: " + userMessage);
         conversationArea.setCaretPosition(conversationArea.getDocument().getLength());
 
-        // Show thinking indicator
-        conversationArea.append("\n\n🤖 AI: Thinking...");
+        conversationArea.append("\n\n🤖 AI: ");
+        int startPos = conversationArea.getDocument().getLength();
+        conversationArea.append("Thinking...");
         conversationArea.setCaretPosition(conversationArea.getDocument().getLength());
 
         new Thread(() -> {
             try {
-                // Get AI response
                 String aiResponse = groqAIService.chat(userMessage);
 
                 SwingUtilities.invokeLater(() -> {
-                    // Remove "Thinking..." and add real response
-                    String text = conversationArea.getText();
-                    text = text.substring(0, text.lastIndexOf("🤖 AI: Thinking..."));
-                    conversationArea.setText(text);
-                    conversationArea.append("\n\n🤖 AI: " + aiResponse);
-                    conversationArea.setCaretPosition(conversationArea.getDocument().getLength());
+                    // Remove "Thinking..."
+                    try {
+                        String current = conversationArea.getText();
+                        int thinkingIdx = current.lastIndexOf("Thinking...");
+                        if (thinkingIdx != -1) {
+                            conversationArea.replaceRange("", thinkingIdx, current.length());
+                        }
+                    } catch (Exception e) {
+                    }
 
-                    // Speak the response (in background)
+                    // Typing effect
+                    javax.swing.Timer typingTimer = new javax.swing.Timer(15, null);
+                    final int[] charIdx = { 0 };
+                    typingTimer.addActionListener(e -> {
+                        if (charIdx[0] < aiResponse.length()) {
+                            conversationArea.append(String.valueOf(aiResponse.charAt(charIdx[0])));
+                            conversationArea.setCaretPosition(conversationArea.getDocument().getLength());
+                            charIdx[0]++;
+                        } else {
+                            typingTimer.stop();
+                        }
+                    });
+                    typingTimer.start();
+
+                    // Voice in background
                     new Thread(() -> {
                         try {
                             ttsService.speak(aiResponse);
                         } catch (Exception e) {
-                            System.err.println("TTS Error: " + e.getMessage());
                         }
                     }).start();
                 });
 
             } catch (Exception e) {
-                e.printStackTrace();
                 SwingUtilities.invokeLater(() -> {
-                    String text = conversationArea.getText();
-                    text = text.substring(0, text.lastIndexOf("🤖 AI: Thinking..."));
-                    conversationArea.setText(text);
-                    conversationArea.append("\n\n❌ Error: " + e.getMessage());
-                    conversationArea.setCaretPosition(conversationArea.getDocument().getLength());
+                    conversationArea.append("❌ Error: " + e.getMessage());
                 });
             }
         }).start();

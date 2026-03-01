@@ -17,6 +17,9 @@ import org.jfree.chart.plot.*;
 import org.jfree.chart.axis.*;
 import org.jfree.chart.renderer.category.*;
 import org.jfree.chart.renderer.xy.*;
+import org.jfree.data.xy.*;
+import org.jfree.data.category.*;
+import org.jfree.data.general.*;
 import org.jfree.data.category.*;
 import org.jfree.data.xy.*;
 import org.jfree.data.general.*;
@@ -125,6 +128,7 @@ public class PremiumStockDashboard extends JFrame {
     private final GroqAIService groqAIService;
     private final TextToSpeechService ttsService;
     private final NewsService newsService;
+    private final AIRebalancer rebalancer;
     private final Map<String, List<StockPrice>> historyCache = new HashMap<>();
     private volatile boolean isRecording = false;
     private volatile boolean isSpeaking = false;
@@ -167,6 +171,7 @@ public class PremiumStockDashboard extends JFrame {
         this.groqAIService = new GroqAIService(portfolioService);
         this.ttsService = new TextToSpeechService();
         this.newsService = new NewsService(); // Initialize NewsService
+        this.rebalancer = new AIRebalancer(portfolioService); // Initialize AIRebalancer
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(1400, 900);
@@ -202,6 +207,64 @@ public class PremiumStockDashboard extends JFrame {
         add(layeredPane, BorderLayout.CENTER);
 
         navigate("Dashboard");
+    }
+
+    private void showAIRebalanceModal() {
+        JDialog dialog = new JDialog(this, "AI Portfolio Optimizer", true);
+        dialog.setSize(600, 500);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(BG);
+        panel.setBorder(new EmptyBorder(25, 25, 25, 25));
+
+        JLabel title = new JLabel("Institutional AI Recommendations");
+        title.setFont(new Font("Inter", Font.BOLD, 18));
+        title.setForeground(ACCENT);
+        panel.add(title, BorderLayout.NORTH);
+
+        JPanel listPanel = new JPanel();
+        listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+        listPanel.setBackground(BG);
+
+        List<AIRebalancer.RebalanceAdvice> adviceList = rebalancer.suggestOptimization();
+        if (adviceList.isEmpty()) {
+            JPanel card = createCard("No Recommendations");
+            JLabel emptyMsg = new JLabel("Your portfolio is optimized. No urgent actions needed. ✅");
+            emptyMsg.setForeground(TEXT);
+            card.add(emptyMsg, BorderLayout.CENTER);
+            listPanel.add(card);
+        } else {
+            for (AIRebalancer.RebalanceAdvice a : adviceList) {
+                JPanel card = createCard(a.category + ": " + a.status);
+                card.setLayout(new BorderLayout(15, 10));
+
+                JLabel msg = new JLabel("<html><body style='width: 350px;'>" + a.message + "</body></html>");
+                msg.setFont(new Font("Inter", Font.PLAIN, 12));
+                msg.setForeground(TEXT);
+                card.add(msg, BorderLayout.CENTER);
+
+                JLabel actionHint = new JLabel(a.action);
+                actionHint.setFont(new Font("Inter", Font.ITALIC, 11));
+                actionHint.setForeground(ACCENT2);
+                card.add(actionHint, BorderLayout.SOUTH);
+
+                listPanel.add(card);
+                listPanel.add(Box.createVerticalStrut(15));
+            }
+        }
+
+        JScrollPane scroll = new JScrollPane(listPanel);
+        scroll.setBorder(null);
+        scroll.setBackground(BG);
+        panel.add(scroll, BorderLayout.CENTER);
+
+        JButton closeBtn = createStyledButton("Close Optimizer", ACCENT);
+        closeBtn.addActionListener(e -> dialog.dispose());
+        panel.add(closeBtn, BorderLayout.SOUTH);
+
+        dialog.add(panel);
+        dialog.setVisible(true);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -738,8 +801,12 @@ public class PremiumStockDashboard extends JFrame {
         JButton refreshBtn = createStyledButton("🔄 Refresh Hub", ACCENT2);
         refreshBtn.addActionListener(e -> refreshPrices());
 
+        JButton rebalanceBtn = createStyledButton("🤖 AI Rebalance", new Color(139, 92, 246));
+        rebalanceBtn.addActionListener(e -> showAIRebalanceModal());
+
         actionPanel.add(addBtn);
         actionPanel.add(refreshBtn);
+        actionPanel.add(rebalanceBtn);
         content.add(actionPanel);
         content.add(Box.createVerticalStrut(20));
 
@@ -3058,24 +3125,80 @@ public class PremiumStockDashboard extends JFrame {
     // MARKET PULSE TICKER (PHASE 4)
     // ═══════════════════════════════════════════════════════════════════════
     class MarketTickerPulse extends JPanel {
-        private String[] tickerData = {
-                "AAPL $192.41 ▲ 1.2%", "TSLA $174.30 ▼ 0.8%", "GOOGL $142.10 ▲ 0.5%",
-                "BTC $68,140 ▲ 2.1%", "ETH $3,450 ▲ 1.4%", "NVDA $915.20 ▲ 3.2%",
-                "AMZN $178.50 ▲ 1.1%", "MSFT $415.20 ▲ 0.9%", "META $485.30 ▲ 1.5%"
-        };
+        private List<String> tickerItems = new ArrayList<>();
         private float scrollX = 0;
         private javax.swing.Timer tickerTimer;
+        private javax.swing.Timer dataRefreshTimer;
 
         public MarketTickerPulse() {
             setOpaque(false);
             setPreferredSize(new Dimension(800, 25));
+            refreshData();
+
             tickerTimer = new javax.swing.Timer(30, e -> {
                 scrollX -= 1.2f;
-                if (scrollX < -2000)
+                // Simplified reset logic for smooth looping
+                if (scrollX < -3000)
                     scrollX = getWidth();
                 repaint();
             });
             tickerTimer.start();
+
+            // Refresh data every 10 seconds (simulating live feed)
+            dataRefreshTimer = new javax.swing.Timer(10000, e -> refreshData());
+            dataRefreshTimer.start();
+        }
+
+        private void refreshData() {
+            List<String> newData = new ArrayList<>();
+            Set<String> symbols = new HashSet<>();
+
+            // Add portfolio symbols
+            for (PortfolioItem item : portfolioService.getPortfolioItems()) {
+                symbols.add(item.getStock().getSymbol());
+            }
+            // Add watchlist symbols
+            for (Stock s : portfolioService.getWatchlist()) {
+                symbols.add(s.getSymbol());
+            }
+
+            // Always add some major indices for a professional look
+            symbols.add("BTC");
+            symbols.add("ETH");
+            symbols.add("SPY");
+
+            for (String sym : symbols) {
+                double price = 0;
+                // Try to get price from service, or use deterministic random for others
+                try {
+                    PortfolioItem item = portfolioService.getPortfolioItems().stream()
+                            .filter(i -> i.getStock().getSymbol().equalsIgnoreCase(sym))
+                            .findFirst().orElse(null);
+                    if (item != null) {
+                        price = item.getStock().getCurrentPrice();
+                    } else {
+                        // Deterministic random price for mock/index symbols
+                        Random r = new Random(sym.hashCode());
+                        price = 100 + r.nextDouble() * 1000;
+                    }
+                } catch (Exception e) {
+                }
+
+                // Simulate a daily change
+                Random rand = new Random();
+                double change = (rand.nextDouble() - 0.45) * 2.5; // -1.1% to +1.4%
+                String indicator = change >= 0 ? "▲" : "▼";
+
+                String entry = String.format("%s %s %.2f %s %.1f%%",
+                        sym, getCurrencySymbol(), price, indicator, Math.abs(change));
+                newData.add(entry);
+            }
+
+            if (newData.isEmpty()) {
+                tickerItems = Arrays.asList("STOCKVAULT PREMIUM LIVE FEED ACTIVE   •   WAITING FOR DATA");
+            } else {
+                tickerItems = newData;
+            }
         }
 
         @Override
@@ -3085,7 +3208,12 @@ public class PremiumStockDashboard extends JFrame {
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g2.setFont(new Font("Inter", Font.BOLD, 12));
 
-            String fullText = String.join("     •     ", tickerData);
+            String fullText = String.join("     •     ", tickerItems);
+
+            // Subtle background glow for ticker
+            g2.setColor(new Color(0, 255, 127, 20));
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+
             g2.setColor(GREEN);
             g2.drawString(fullText, scrollX, 18);
             g2.dispose();

@@ -1,19 +1,36 @@
 # Compiled class files
 *.class
 bin/
-# com/ is part of package structure, don't ignore it
+com/
 
-# Database
-portfolio.db
-
-# IDE
+# IDE settings
 .vscode/
 .idea/
 *.iml
+*.iws
+.project
+.classpath
+.settings/
 
-# OS
+# Database
+portfolio.db
+*.db-shm
+*.db-wal
+
+# OS files
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs & Temporary
 *.log
+temp/
+tmp/
+
+# Large Models (Voice)
+models/
+lib/vosk-*.jar
+
+# Build Artifacts
+out/
+target/
+build/

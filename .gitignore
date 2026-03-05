@@ -1,7 +1,13 @@
 # Compiled class files
 *.class
 bin/
-com/
+com/*.class
+
+# API Keys & Credentials (NEVER COMMIT!)
+src/com/portfolio/service/ApiKeyManager.java
+*.env
+.env
+.env.local
 
 # IDE settings
 .vscode/

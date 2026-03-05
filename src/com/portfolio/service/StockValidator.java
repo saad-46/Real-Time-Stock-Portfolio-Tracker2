@@ -14,7 +14,7 @@ import java.net.http.HttpResponse; // For handling HTTP responses
 public class StockValidator {
     
     // API key for Alpha Vantage - your personal key to access their service
-    private static final String API_KEY = "M60K5JGJIO11K5QS";
+    private static final String API_KEY = ApiKeyManager.getAlphaVantageKey();
     
     // Base URL for Alpha Vantage API - the website address
     private static final String BASE_URL = "https://www.alphavantage.co/query";

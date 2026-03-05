@@ -16,7 +16,7 @@ import java.util.List;       // Import List interface
 public class StockSearchService {
     
     // Alpha Vantage API key - get free key from https://www.alphavantage.co/support/#api-key
-    private static final String API_KEY = "demo";  // Replace with your API key
+    private static final String API_KEY = ApiKeyManager.getAlphaVantageKey();
     
     // Base URL for Alpha Vantage API
     private static final String BASE_URL = "https://www.alphavantage.co/query";

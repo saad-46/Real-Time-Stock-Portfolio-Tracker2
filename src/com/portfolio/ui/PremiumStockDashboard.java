@@ -131,6 +131,10 @@ public class PremiumStockDashboard extends JFrame {
     private volatile boolean isSpeaking = false;
     private String lastUserCommand = "";
 
+    // Email services
+    private final EmailService emailService;
+    private final DailyPortfolioScheduler emailScheduler;
+
     // Stock autocomplete data
     static final String[] STOCKS = {
             "AAPL - Apple Inc", "GOOGL - Alphabet Inc", "MSFT - Microsoft Corp",
@@ -149,7 +153,7 @@ public class PremiumStockDashboard extends JFrame {
             } catch (Exception ignored) {
             }
             WelcomeScreen welcomeScreen = new WelcomeScreen(() -> {
-                StockPriceService priceService = new AlphaVantageService();
+                StockPriceService priceService = new MultiSourceStockService();
                 PortfolioService portfolioService = new PortfolioService(priceService);
                 new PremiumStockDashboard(portfolioService).setVisible(true);
             });
@@ -169,6 +173,14 @@ public class PremiumStockDashboard extends JFrame {
         this.ttsService = new TextToSpeechService();
         this.newsService = new NewsService(); // Initialize NewsService
         this.rebalancer = new AIRebalancer(portfolioService); // Initialize AIRebalancer
+
+        // Initialize Email Service
+        this.emailService = new EmailService();
+        this.emailScheduler = new DailyPortfolioScheduler(portfolioService, emailService);
+
+        // Auto-start daily email scheduler for mhnu.6180@gmail.com at 8 PM
+        emailScheduler.start("mhnu.6180@gmail.com");
+        System.out.println("✅ Daily email scheduler started for mhnu.6180@gmail.com at 8:00 PM");
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(1400, 900);
@@ -349,7 +361,25 @@ public class PremiumStockDashboard extends JFrame {
         sidebar.add(footer, BorderLayout.SOUTH);
 
         // Hover animation: expand on enter, collapse on exit
-        sidebar.addMouseListener(new MouseAdapter() {
+        // Add listeners to sidebar AND all its components
+        addSidebarHoverListeners(sidebar);
+        addSidebarHoverListeners(logoPanel);
+        addSidebarHoverListeners(navPanel);
+        addSidebarHoverListeners(footer);
+        
+        // Also add to all nav buttons
+        for (NavButton btn : navButtons) {
+            addSidebarHoverListeners(btn);
+        }
+
+        return sidebar;
+    }
+    
+    /**
+     * Add hover listeners to sidebar components to fix hover detection
+     */
+    private void addSidebarHoverListeners(JComponent component) {
+        component.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent e) {
                 animateSidebar(true);
@@ -357,11 +387,17 @@ public class PremiumStockDashboard extends JFrame {
 
             @Override
             public void mouseExited(MouseEvent e) {
-                animateSidebar(false);
+                // Only collapse if mouse is truly outside the entire sidebar area
+                Point mousePoint = e.getLocationOnScreen();
+                Point sidebarPoint = sidebarRef.getLocationOnScreen();
+                Rectangle sidebarBounds = new Rectangle(sidebarPoint.x, sidebarPoint.y, 
+                    sidebarRef.getWidth(), sidebarRef.getHeight());
+                
+                if (!sidebarBounds.contains(mousePoint)) {
+                    animateSidebar(false);
+                }
             }
         });
-
-        return sidebar;
     }
 
     private void animateSidebar(boolean expand) {
@@ -491,18 +527,33 @@ public class PremiumStockDashboard extends JFrame {
     }
 
     /**
-     * Generate deterministic sparkline data from a stock symbol and current price
+     * Generate deterministic sparkline data from a stock symbol, purchase price, and current price
+     * The trend will reflect actual gain/loss
      */
-    private double[] generateSparklineData(String symbol, double currentPrice) {
+    private double[] generateSparklineData(String symbol, double purchasePrice, double currentPrice) {
         Random rand = new Random(symbol.hashCode());
         int points = 15;
         double[] data = new double[points];
-        double price = currentPrice * (0.85 + rand.nextDouble() * 0.15);
-        for (int i = 0; i < points; i++) {
-            price += (rand.nextDouble() - 0.48) * (currentPrice * 0.03);
+        
+        // Start from purchase price
+        data[0] = purchasePrice;
+        
+        // Calculate the total change
+        double totalChange = currentPrice - purchasePrice;
+        double avgChangePerPoint = totalChange / (points - 1);
+        
+        // Generate intermediate points with some randomness but trending toward current price
+        double price = purchasePrice;
+        for (int i = 1; i < points - 1; i++) {
+            // Add the average change plus some random variation
+            double randomVariation = (rand.nextDouble() - 0.5) * (Math.abs(totalChange) * 0.2);
+            price += avgChangePerPoint + randomVariation;
             data[i] = price;
         }
-        data[points - 1] = currentPrice; // ensure last point is actual price
+        
+        // Ensure last point is actual current price
+        data[points - 1] = currentPrice;
+        
         return data;
     }
 
@@ -692,7 +743,7 @@ public class PremiumStockDashboard extends JFrame {
                     formatCurrency(convertedPrice),
                     formatCurrency(convertedTotal),
                     formatCurrency(convertedGain),
-                    generateSparklineData(item.getStock().getSymbol(), item.getStock().getCurrentPrice())
+                    generateSparklineData(item.getStock().getSymbol(), item.getPurchasePrice(), item.getStock().getCurrentPrice())
             });
         }
 
@@ -800,10 +851,80 @@ public class PremiumStockDashboard extends JFrame {
 
         JButton rebalanceBtn = createStyledButton("🤖 AI Rebalance", new Color(139, 92, 246));
         rebalanceBtn.addActionListener(e -> showAIRebalanceModal());
+        
+        JButton emailTestBtn = createStyledButton("📧 Send Email Now", new Color(34, 197, 94));
+        emailTestBtn.addActionListener(e -> {
+            emailTestBtn.setText("📤 Sending...");
+            emailTestBtn.setEnabled(false);
+            
+            new Thread(() -> {
+                try {
+                    emailService.sendDailyPortfolioUpdate("mhnu.6180@gmail.com", portfolioService);
+                    
+                    SwingUtilities.invokeLater(() -> {
+                        emailTestBtn.setText("✅ Email Sent!");
+                        emailTestBtn.setBackground(GREEN);
+                        
+                        JOptionPane.showMessageDialog(this, 
+                            "📧 Portfolio email sent successfully!\n\n" +
+                            "✅ To: mhnu.6180@gmail.com\n" +
+                            "📊 From: stockvault123@gmail.com\n" +
+                            "⏰ Auto-scheduled: Every day at 8:00 PM\n\n" +
+                            "Check your Gmail inbox!", 
+                            "Email Sent", 
+                            JOptionPane.INFORMATION_MESSAGE);
+                        
+                        // Reset button after 3 seconds
+                        javax.swing.Timer resetTimer = new javax.swing.Timer(3000, evt -> {
+                            emailTestBtn.setText("📧 Send Email Now");
+                            emailTestBtn.setBackground(new Color(34, 197, 94));
+                            emailTestBtn.setEnabled(true);
+                        });
+                        resetTimer.setRepeats(false);
+                        resetTimer.start();
+                    });
+                } catch (Exception ex) {
+                    SwingUtilities.invokeLater(() -> {
+                        emailTestBtn.setText("❌ Failed");
+                        emailTestBtn.setBackground(RED);
+                        emailTestBtn.setEnabled(true);
+                        
+                        String errorMsg = ex.getMessage();
+                        boolean isAuthError = errorMsg != null && errorMsg.toLowerCase().contains("authentication");
+                        
+                        if (isAuthError) {
+                            JOptionPane.showMessageDialog(this, 
+                                "❌ Gmail Authentication Failed!\n\n" +
+                                "⚠️  Gmail requires an APP PASSWORD, not your regular password!\n\n" +
+                                "📋 QUICK FIX:\n" +
+                                "1. Go to: https://myaccount.google.com/apppasswords\n" +
+                                "2. Generate App Password for 'Mail'\n" +
+                                "3. Update EmailService.java line 14\n" +
+                                "4. Replace 'Stockvault321' with your App Password\n" +
+                                "5. Recompile and test again\n\n" +
+                                "📖 See EMAIL-SETUP-GUIDE.md for detailed instructions", 
+                                "App Password Required", 
+                                JOptionPane.ERROR_MESSAGE);
+                        } else {
+                            JOptionPane.showMessageDialog(this, 
+                                "❌ Failed to send email:\n" + errorMsg + "\n\n" +
+                                "Make sure:\n" +
+                                "1. Internet connection is active\n" +
+                                "2. Gmail App Password is configured\n" +
+                                "3. Check console for detailed error logs\n\n" +
+                                "📖 See EMAIL-SETUP-GUIDE.md for help", 
+                                "Email Error", 
+                                JOptionPane.ERROR_MESSAGE);
+                        }
+                    });
+                }
+            }).start();
+        });
 
         actionPanel.add(addBtn);
         actionPanel.add(refreshBtn);
         actionPanel.add(rebalanceBtn);
+        actionPanel.add(emailTestBtn);
         content.add(actionPanel);
         content.add(Box.createVerticalStrut(20));
 
@@ -845,7 +966,7 @@ public class PremiumStockDashboard extends JFrame {
                     formatCurrency(convertedTotal),
                     formatCurrency(convertedGain),
                     String.format("%.2f%%", returnPercent),
-                    generateSparklineData(item.getStock().getSymbol(), item.getStock().getCurrentPrice())
+                    generateSparklineData(item.getStock().getSymbol(), item.getPurchasePrice(), item.getStock().getCurrentPrice())
             });
         }
 
@@ -1075,11 +1196,154 @@ public class PremiumStockDashboard extends JFrame {
         updateTable.run(); // Initial load
 
         content.add(gridPanel);
+        content.add(Box.createVerticalStrut(20));
+        
+        // "Load More Stocks" Button
+        JPanel loadMorePanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        loadMorePanel.setOpaque(false);
+        loadMorePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
+        
+        RoundedButton loadMoreBtn = new RoundedButton("📈 Load 100+ More Stocks", 15);
+        loadMoreBtn.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        loadMoreBtn.setBackground(ACCENT);
+        loadMoreBtn.setForeground(Color.WHITE);
+        loadMoreBtn.setPreferredSize(new Dimension(280, 50));
+        loadMoreBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        
+        // Create expanded grid panel (initially hidden)
+        JPanel expandedGridPanel = new JPanel(new GridLayout(0, 3, 20, 20));
+        expandedGridPanel.setBackground(BG);
+        expandedGridPanel.setVisible(false);
+        
+        loadMoreBtn.addActionListener(e -> {
+            if (!expandedGridPanel.isVisible()) {
+                // Load all stocks
+                loadMoreBtn.setText("⏳ Loading...");
+                loadMoreBtn.setEnabled(false);
+                
+                new Thread(() -> {
+                    java.util.List<Object[]> allStocks = com.portfolio.data.StockDatabase.getAllStocks();
+                    
+                    SwingUtilities.invokeLater(() -> {
+                        // Add all stocks to expanded grid
+                        for (Object[] stock : allStocks) {
+                            String symbol = (String) stock[0];
+                            String name = (String) stock[1];
+                            double price = (Double) stock[2];
+                            String change = (String) stock[3];
+                            String sector = (String) stock[4];
+                            String marketCap = (String) stock[5];
+                            
+                            boolean isPositive = change.startsWith("+");
+                            double convertedPrice = portfolioService.convertToBase(price, "USD");
+                            
+                            expandedGridPanel.add(createStockCard(symbol, name, formatCurrency(convertedPrice), 
+                                change, isPositive, sector, marketCap));
+                        }
+                        
+                        expandedGridPanel.setVisible(true);
+                        loadMoreBtn.setText("✅ Loaded " + allStocks.size() + " Stocks");
+                        loadMoreBtn.setBackground(GREEN);
+                        
+                        // Scroll to show new content
+                        expandedGridPanel.revalidate();
+                        expandedGridPanel.repaint();
+                        
+                        // Auto-scroll to new content
+                        SwingUtilities.invokeLater(() -> {
+                            JScrollPane parentScroll = findParentScrollPane(loadMoreBtn);
+                            if (parentScroll != null) {
+                                JScrollBar vertical = parentScroll.getVerticalScrollBar();
+                                vertical.setValue(vertical.getValue() + 200);
+                            }
+                        });
+                    });
+                }).start();
+            }
+        });
+        
+        loadMorePanel.add(loadMoreBtn);
+        content.add(loadMorePanel);
+        content.add(Box.createVerticalStrut(20));
+        content.add(expandedGridPanel);
+        content.add(Box.createVerticalStrut(30));
+
+        // News Section
+        JPanel newsSection = new JPanel(new BorderLayout(0, 15));
+        newsSection.setOpaque(false);
+        newsSection.setMaximumSize(new Dimension(Integer.MAX_VALUE, 400));
+
+        JPanel newsHeader = new JPanel(new BorderLayout());
+        newsHeader.setOpaque(false);
+        JLabel newsTitle = new JLabel("📰 Live Market News");
+        newsTitle.setFont(FONT_HEADING);
+        newsTitle.setForeground(TEXT());
+        newsHeader.add(newsTitle, BorderLayout.WEST);
+
+        JButton refreshNewsBtn = createStyledButton("Refresh News", ACCENT2);
+        newsHeader.add(refreshNewsBtn, BorderLayout.EAST);
+        newsSection.add(newsHeader, BorderLayout.NORTH);
+
+        JPanel newsGrid = new JPanel(new GridLayout(0, 2, 20, 20));
+        newsGrid.setOpaque(false);
+        JScrollPane newsScroll = new JScrollPane(newsGrid);
+        newsScroll.setBorder(null);
+        newsScroll.setOpaque(false);
+        newsScroll.getViewport().setOpaque(false);
+        newsScroll.setPreferredSize(new Dimension(100, 300));
+        newsSection.add(newsScroll, BorderLayout.CENTER);
+
+        Runnable updateNewsUI = () -> {
+            newsGrid.removeAll();
+            java.util.List<NewsService.NewsItem> items = newsService.getCachedNews();
+            for (NewsService.NewsItem item : items) {
+                JPanel nCard = createCard(item.getTitle());
+                nCard.setLayout(new BorderLayout(10, 10));
+
+                JLabel desc = new JLabel(
+                        "<html><body style='width:250px;'>" + item.getDescription() + "</body></html>");
+                desc.setFont(FONT_SMALL);
+                desc.setForeground(TEXT_DIM());
+                nCard.add(desc, BorderLayout.CENTER);
+
+                JPanel nFoot = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+                nFoot.setOpaque(false);
+                nFoot.add(createTag(item.getCategory(), ACCENT));
+                nFoot.add(createTag(item.getSentiment(), item.getSentiment().equals("Bullish") ? GREEN
+                        : (item.getSentiment().equals("Bearish") ? RED : TEXT_DIM())));
+                JLabel src = new JLabel("· " + item.getSource());
+                src.setFont(FONT_SMALL);
+                src.setForeground(TEXT_DIM());
+                nFoot.add(src);
+
+                nCard.add(nFoot, BorderLayout.SOUTH);
+                newsGrid.add(nCard);
+            }
+            newsGrid.revalidate();
+            newsGrid.repaint();
+        };
+
+        refreshNewsBtn.addActionListener(e -> {
+            refreshNewsBtn.setText("Fetching...");
+            refreshNewsBtn.setEnabled(false);
+            new Thread(() -> {
+                newsService.fetchMarketNews();
+                SwingUtilities.invokeLater(() -> {
+                    updateNewsUI.run();
+                    refreshNewsBtn.setText("Refresh News");
+                    refreshNewsBtn.setEnabled(true);
+                });
+            }).start();
+        });
+
+        updateNewsUI.run();
+        content.add(newsSection);
 
         JScrollPane scrollPane = new JScrollPane(content);
         scrollPane.setBorder(null);
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         page.add(scrollPane, BorderLayout.CENTER);
+
         return page;
     }
 
@@ -1193,7 +1457,16 @@ public class PremiumStockDashboard extends JFrame {
             currentPrice = Double.parseDouble(price.replaceAll("[^\\d.]", ""));
         } catch (Exception ex) {
         }
-        SparklinePanel sparkline = new SparklinePanel(generateSparklineData(symbol, currentPrice));
+        
+        // Calculate purchase price from change percentage
+        double changePercent = 0.0;
+        try {
+            changePercent = Double.parseDouble(change.replace("%", "").replace("+", ""));
+        } catch (Exception ex) {
+        }
+        double purchasePrice = currentPrice / (1 + (changePercent / 100.0));
+        
+        SparklinePanel sparkline = new SparklinePanel(generateSparklineData(symbol, purchasePrice, currentPrice));
         sparkline.setPreferredSize(new Dimension(0, 50));
 
         JButton viewBtn = createStyledButton("View Chart", ACCENT);
@@ -2007,6 +2280,91 @@ public class PremiumStockDashboard extends JFrame {
                 { "Number Format", "International (1.2M) / Indian (12L)", "COMBO" },
                 { "Timezone", "Automatic (ST) / UTC / Local", "COMBO" }
         }));
+        content.add(Box.createVerticalStrut(25));
+
+        // Group 4: Email Notifications
+        JPanel emailPanel = createCard("✉️ Daily Email Notifications");
+        emailPanel.setLayout(new BoxLayout(emailPanel, BoxLayout.Y_AXIS));
+        emailPanel.setBorder(new EmptyBorder(15, 20, 15, 20));
+
+        JPanel grid = new JPanel(new GridLayout(3, 2, 15, 15));
+        grid.setOpaque(false);
+
+        JTextField emailField = createInputField("Your Email Address");
+        JPasswordField passField = new JPasswordField();
+        passField.setBackground(BG());
+        passField.setForeground(TEXT());
+        passField.setBorder(new CompoundBorder(new LineBorder(BORDER()), new EmptyBorder(8, 12, 8, 12)));
+        passField.setCaretColor(TEXT());
+
+        JCheckBox enableDaily = new JCheckBox("Enable Daily Summary at 09:00 AM");
+        enableDaily.setOpaque(false);
+        enableDaily.setForeground(TEXT());
+        enableDaily.setFont(FONT_BODY);
+
+        // Load current
+        if (emailService.isConfigured()) {
+            emailField.setText(emailService.getEmail());
+            passField.setText("********"); // mock for display
+        }
+        enableDaily.setSelected(emailScheduler.isRunning());
+
+        grid.add(createFieldPanel("Gmail Address", emailField));
+        grid.add(createFieldPanel("App Password (Not Account Password)", passField));
+        grid.add(enableDaily);
+
+        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonRow.setOpaque(false);
+
+        JButton testBtn = createStyledButton("Test Email", ACCENT2);
+        testBtn.addActionListener(e -> {
+            boolean success = emailService.sendTestEmail();
+            JOptionPane.showMessageDialog(this,
+                    success ? "Test email sent successfully!" : "Failed to send test email. Check console.",
+                    "Email Test", success ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.ERROR_MESSAGE);
+        });
+
+        JButton saveBtn = createStyledButton("Save Settings", GREEN);
+        saveBtn.addActionListener(e -> {
+            String pass = new String(passField.getPassword());
+            if (pass.equals("********"))
+                pass = null; // didn't change password
+
+            // Assume we had the real password cached or we only set it if explicitly typed
+            // For this UI, user needs to re-type if they want to enable but changed
+            // nothing,
+            // but in real app we'd load it.
+            if (pass != null && !pass.isEmpty()) {
+                emailService.configure(emailField.getText(), pass);
+                com.portfolio.database.DatabaseManager.saveEmailSettings(emailField.getText(), pass, "smtp.gmail.com",
+                        587, enableDaily.isSelected(), "09:00");
+            } else if (emailService.isConfigured()) {
+                // Just update DB enabled status if password hasn't changed
+                String[] loaded = com.portfolio.database.DatabaseManager.loadEmailSettings();
+                if (loaded != null) {
+                    com.portfolio.database.DatabaseManager.saveEmailSettings(loaded[0], loaded[1], loaded[2],
+                            Integer.parseInt(loaded[3]), enableDaily.isSelected(), "09:00");
+                }
+            }
+
+            if (enableDaily.isSelected() && emailService.isConfigured()) {
+                emailScheduler.start("09:00");
+            } else {
+                emailScheduler.stop();
+            }
+
+            JOptionPane.showMessageDialog(this, "Email settings saved successfully.", "Success",
+                    JOptionPane.INFORMATION_MESSAGE);
+        });
+
+        buttonRow.add(testBtn);
+        buttonRow.add(saveBtn);
+
+        emailPanel.add(grid);
+        emailPanel.add(Box.createVerticalStrut(15));
+        emailPanel.add(buttonRow);
+
+        content.add(emailPanel);
 
         JScrollPane scroll = new JScrollPane(content);
         scroll.setBorder(null);
@@ -3265,5 +3623,126 @@ public class PremiumStockDashboard extends JFrame {
             g2.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
             super.paintComponent(g);
         }
+    }
+    
+    /**
+     * Find parent JScrollPane for auto-scrolling
+     */
+    private JScrollPane findParentScrollPane(Component component) {
+        Component parent = component.getParent();
+        while (parent != null) {
+            if (parent instanceof JScrollPane) {
+                return (JScrollPane) parent;
+            }
+            parent = parent.getParent();
+        }
+        return null;
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // EXPLORE STOCKS DIALOG - 100+ Stocks (LEGACY - Now using inline loading)
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    private void showExploreStocksDialog() {
+        JDialog dialog = new JDialog(this, "🔍 Explore 100+ Stocks", true);
+        dialog.setSize(1200, 800);
+        dialog.setLocationRelativeTo(this);
+        dialog.getContentPane().setBackground(BG);
+        
+        JPanel mainPanel = new JPanel(new BorderLayout(15, 15));
+        mainPanel.setBackground(BG);
+        mainPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+        
+        // Header with search
+        JPanel headerPanel = new JPanel(new BorderLayout(15, 0));
+        headerPanel.setOpaque(false);
+        
+        JLabel title = new JLabel("📊 Stock Market Explorer");
+        title.setFont(FONT_TITLE);
+        title.setForeground(TEXT);
+        
+        JTextField searchField = new RoundedTextField(20, 20);
+        searchField.setFont(FONT_BODY);
+        searchField.setForeground(TEXT);
+        searchField.setBackground(CARD_BG);
+        searchField.setCaretColor(TEXT);
+        searchField.setBorder(new EmptyBorder(12, 20, 12, 20));
+        searchField.setPreferredSize(new Dimension(300, 45));
+        
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        searchPanel.setOpaque(false);
+        searchPanel.add(new JLabel("🔍"));
+        searchPanel.add(searchField);
+        
+        headerPanel.add(title, BorderLayout.WEST);
+        headerPanel.add(searchPanel, BorderLayout.EAST);
+        
+        mainPanel.add(headerPanel, BorderLayout.NORTH);
+        
+        // Stock grid
+        JPanel gridPanel = new JPanel(new GridLayout(0, 4, 15, 15));
+        gridPanel.setBackground(BG);
+        
+        JScrollPane scrollPane = new JScrollPane(gridPanel);
+        scrollPane.setBorder(null);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        scrollPane.setBackground(BG);
+        scrollPane.getViewport().setBackground(BG);
+        
+        mainPanel.add(scrollPane, BorderLayout.CENTER);
+        
+        // Load all stocks
+        Runnable loadStocks = () -> {
+            gridPanel.removeAll();
+            String query = searchField.getText().trim().toLowerCase();
+            
+            java.util.List<Object[]> stocks;
+            if (query.isEmpty()) {
+                stocks = com.portfolio.data.StockDatabase.getAllStocks();
+            } else {
+                stocks = com.portfolio.data.StockDatabase.searchStocks(query);
+            }
+            
+            for (Object[] stock : stocks) {
+                String symbol = (String) stock[0];
+                String name = (String) stock[1];
+                double price = (Double) stock[2];
+                String change = (String) stock[3];
+                String sector = (String) stock[4];
+                String marketCap = (String) stock[5];
+                
+                boolean isPositive = change.startsWith("+");
+                double convertedPrice = portfolioService.convertToBase(price, "USD");
+                
+                gridPanel.add(createStockCard(symbol, name, formatCurrency(convertedPrice), 
+                    change, isPositive, sector, marketCap));
+            }
+            
+            gridPanel.revalidate();
+            gridPanel.repaint();
+        };
+        
+        // Search on key release
+        searchField.addKeyListener(new java.awt.event.KeyAdapter() {
+            public void keyReleased(java.awt.event.KeyEvent e) {
+                loadStocks.run();
+            }
+        });
+        
+        // Initial load
+        loadStocks.run();
+        
+        // Footer with stats
+        JPanel footerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        footerPanel.setOpaque(false);
+        JLabel statsLabel = new JLabel("📈 " + com.portfolio.data.StockDatabase.ALL_STOCKS.length + " stocks available across all sectors");
+        statsLabel.setFont(FONT_SMALL);
+        statsLabel.setForeground(TEXT_DIM);
+        footerPanel.add(statsLabel);
+        
+        mainPanel.add(footerPanel, BorderLayout.SOUTH);
+        
+        dialog.add(mainPanel);
+        dialog.setVisible(true);
     }
 }

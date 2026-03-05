@@ -18,28 +18,25 @@ if not exist "lib" (
 :: Compile if classes are missing or for a fresh start
 echo Preparing environment...
 
-:: Build the sources list for compilation
-dir /s /b src\*.java > sources.txt
+:: Create bin directory if it doesn't exist
+if not exist "bin" mkdir bin
 
 echo.
 echo Compiling source code...
-javac -d . -cp ".;lib/*" @sources.txt
+javac -d bin -cp "lib/*;src" -sourcepath src src\com\portfolio\Main.java src\com\portfolio\ui\*.java src\com\portfolio\service\*.java src\com\portfolio\model\*.java src\com\portfolio\database\*.java src\com\portfolio\data\*.java
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [ERROR] Compilation failed. Please check your JDK installation.
-    del sources.txt
     pause
     exit /b
 )
-
-del sources.txt
 
 echo.
 echo Launching StockVault Premium...
 echo.
 
-java --enable-native-access=ALL-UNNAMED -cp ".;lib/*" com.portfolio.ui.PremiumStockDashboard
+java --enable-native-access=ALL-UNNAMED -cp "bin;lib/*" com.portfolio.Main
 
 echo.
 echo Application closed.

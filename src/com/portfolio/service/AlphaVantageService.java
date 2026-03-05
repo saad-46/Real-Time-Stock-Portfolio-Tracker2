@@ -10,7 +10,7 @@ import java.net.http.HttpResponse; // Import HttpResponse to handle responses
 // It IMPLEMENTS StockPriceService, meaning it must have the methods from that interface
 public class AlphaVantageService implements StockPriceService {
     // Constants - values that never change
-    private static final String API_KEY = "M60K5JGJIO11K5QS"; // Your personal API key to access Alpha Vantage
+    private static final String API_KEY = ApiKeyManager.getAlphaVantageKey(); // Centralized API key
     private static final String BASE_URL = "https://www.alphavantage.co/query"; // The website address for API
 
     private final HttpClient httpClient; // Tool to make web requests (like a web browser)
@@ -67,7 +67,7 @@ public class AlphaVantageService implements StockPriceService {
     }
 
     private String fetchFullQuote(String symbol) throws Exception {
-        String url = String.format("%sfunction=GLOBAL_QUOTE&symbol=%s&apikey=%s",
+        String url = String.format("%s?function=GLOBAL_QUOTE&symbol=%s&apikey=%s",
                 BASE_URL, symbol, API_KEY);
 
         HttpRequest request = HttpRequest.newBuilder()

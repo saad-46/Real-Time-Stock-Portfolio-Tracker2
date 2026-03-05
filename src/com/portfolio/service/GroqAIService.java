@@ -12,7 +12,7 @@ import com.portfolio.model.PortfolioItem;
 public class GroqAIService {
 
     private static final String API_KEY = System.getenv("GROQ_API_KEY") != null ? System.getenv("GROQ_API_KEY")
-            : "YOUR_GROQ_API_KEY_HERE";
+            : ApiKeyManager.getGroqKey();
     private static final String API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
     private final HttpClient httpClient;
@@ -99,7 +99,8 @@ public class GroqAIService {
         try {
             String lowerIntent = userIntent.toLowerCase();
             // Basic hardcoded logic for common intents
-            if (lowerIntent.contains("sell all") || lowerIntent.contains("clear portfolio")) {
+            if (lowerIntent.contains("sell all") || lowerIntent.contains("clear portfolio") || 
+                lowerIntent.contains("remove all")) {
                 StringBuilder result = new StringBuilder("✅ Selling all stocks:\n");
                 List<PortfolioItem> items = new ArrayList<>(portfolioService.getPortfolioItems());
                 if (items.isEmpty())
@@ -115,38 +116,59 @@ public class GroqAIService {
             String prompt = "Extract trading action from: \"" + userIntent
                     + "\". Respond ONLY with JSON: {\"action\":\"buy|sell|show_portfolio\",\"symbol\":\"TICKER\",\"quantity\":10,\"price\":150}";
             String json = String.format(
-                    "{ \"model\": \"llama-3.3-70b-versatile\", \"messages\": [{\"role\":\"user\",\"content\":\"%s\"}], \"temperature\": 0.1 }",
+                    "{ \"model\": \"llama-3.3-70b-versatile\", \"messages\": [{\"role\":\"user\",\"content\":\"%s\"}], \"temperature\": 0.1, \"max_tokens\": 100 }",
                     escapeJson(prompt));
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(API_URL))
                     .header("Authorization", "Bearer " + API_KEY)
                     .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            // Check for errors
+            if (response.statusCode() != 200) {
+                throw new Exception("API returned status " + response.statusCode() + ": " + response.body());
+            }
+            
             String aiResp = parseAIResponse(response.body());
 
             // Simple manual extraction from AI JSON response
-            if (aiResp.contains("\"buy\"")) {
+            if (aiResp.contains("\"buy\"") || aiResp.contains("buy")) {
                 String symbol = extractField(aiResp, "symbol");
-                int qty = Integer.parseInt(extractField(aiResp, "quantity"));
-                double price = Double.parseDouble(extractField(aiResp, "price"));
+                String qtyStr = extractField(aiResp, "quantity");
+                String priceStr = extractField(aiResp, "price");
+                
+                if (symbol.equals("0") || qtyStr.equals("0")) {
+                    return "❌ Could not understand the buy command. Please specify: 'Buy [quantity] [symbol] at [price]'";
+                }
+                
+                int qty = Integer.parseInt(qtyStr);
+                double price = Double.parseDouble(priceStr);
                 portfolioService.buyStock(symbol, symbol, qty, price);
-                return String.format("✅ Bought %d %s @ %.2f", qty, symbol, price);
-            } else if (aiResp.contains("\"sell\"")) {
+                return String.format("✅ Bought %d %s @ ₹%.2f", qty, symbol, price);
+            } else if (aiResp.contains("\"sell\"") || aiResp.contains("sell")) {
                 String symbol = extractField(aiResp, "symbol");
-                int qty = Integer.parseInt(extractField(aiResp, "quantity"));
+                String qtyStr = extractField(aiResp, "quantity");
+                
+                if (symbol.equals("0")) {
+                    return "❌ Could not understand the sell command. Please specify: 'Sell [quantity] [symbol]'";
+                }
+                
+                int qty = Integer.parseInt(qtyStr);
                 portfolioService.sellStock(symbol, qty);
                 return String.format("✅ Sold %d %s", qty, symbol);
-            } else if (aiResp.contains("show_portfolio")) {
+            } else if (aiResp.contains("show_portfolio") || aiResp.contains("portfolio")) {
                 return buildPortfolioContext();
             }
 
-            return "I'm not sure how to do that yet.";
+            return "❌ I couldn't understand that command. Try: 'Buy 10 AAPL at 150' or 'Sell 5 GOOGL'";
         } catch (Exception e) {
-            return "❌ Error processing intent: " + e.getMessage();
+            e.printStackTrace();
+            return "❌ Error: " + e.getMessage();
         }
     }
 

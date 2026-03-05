@@ -139,6 +139,49 @@ public class DatabaseManager {
             stmt.execute(createWatchlistTable);
             System.out.println("✅ Watchlist table ready");
 
+            // ===== CREATE USERS TABLE =====
+            String createUsersTable = "CREATE TABLE IF NOT EXISTS users (" +
+                    "    id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "    username TEXT UNIQUE NOT NULL," +
+                    "    password_hash TEXT NOT NULL," +
+                    "    email TEXT," +
+                    "    full_name TEXT," +
+                    "    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                    "    last_login TIMESTAMP" +
+                    ")";
+            stmt.execute(createUsersTable);
+            System.out.println("✅ Users table ready");
+            
+            // Add user_id column to existing tables if not exists
+            try {
+                stmt.execute("ALTER TABLE portfolio_items ADD COLUMN user_id INTEGER DEFAULT 1");
+            } catch (SQLException e) {
+                // Column already exists
+            }
+            try {
+                stmt.execute("ALTER TABLE transactions ADD COLUMN user_id INTEGER DEFAULT 1");
+            } catch (SQLException e) {
+                // Column already exists
+            }
+            try {
+                stmt.execute("ALTER TABLE watchlist ADD COLUMN user_id INTEGER DEFAULT 1");
+            } catch (SQLException e) {
+                // Column already exists
+            }
+
+            // ===== CREATE EMAIL_SETTINGS TABLE =====
+            String createEmailSettingsTable = "CREATE TABLE IF NOT EXISTS email_settings (" +
+                    "    id INTEGER PRIMARY KEY," +
+                    "    email TEXT," +
+                    "    smtp_host TEXT DEFAULT 'smtp.gmail.com'," +
+                    "    smtp_port INTEGER DEFAULT 587," +
+                    "    app_password TEXT," +
+                    "    daily_email_enabled INTEGER DEFAULT 0," +
+                    "    send_time TEXT DEFAULT '09:00'" +
+                    ")";
+            stmt.execute(createEmailSettingsTable);
+            System.out.println("✅ Email settings table ready");
+
             // Close statement (good practice to free resources)
             stmt.close();
 
@@ -147,6 +190,69 @@ public class DatabaseManager {
             System.err.println("❌ Error creating tables: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Saves email settings to the database.
+     */
+    public static void saveEmailSettings(String email, String appPassword, String smtpHost,
+            int smtpPort, boolean dailyEnabled, String sendTime) {
+        try {
+            Connection conn = getConnection();
+            // Delete existing settings
+            Statement delStmt = conn.createStatement();
+            delStmt.execute("DELETE FROM email_settings");
+            delStmt.close();
+
+            // Insert new settings
+            String sql = "INSERT INTO email_settings (id, email, smtp_host, smtp_port, app_password, daily_email_enabled, send_time) "
+                    +
+                    "VALUES (1, ?, ?, ?, ?, ?, ?)";
+            java.sql.PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, email);
+            pstmt.setString(2, smtpHost);
+            pstmt.setInt(3, smtpPort);
+            pstmt.setString(4, appPassword);
+            pstmt.setInt(5, dailyEnabled ? 1 : 0);
+            pstmt.setString(6, sendTime);
+            pstmt.executeUpdate();
+            pstmt.close();
+            System.out.println("✅ Email settings saved");
+        } catch (SQLException e) {
+            System.err.println("❌ Error saving email settings: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Loads email settings from the database.
+     * Returns a String array: [email, appPassword, smtpHost, smtpPort,
+     * dailyEnabled, sendTime]
+     * Returns null if no settings exist.
+     */
+    public static String[] loadEmailSettings() {
+        try {
+            Connection conn = getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                    "SELECT email, app_password, smtp_host, smtp_port, daily_email_enabled, send_time FROM email_settings WHERE id = 1");
+            if (rs.next()) {
+                String[] settings = new String[6];
+                settings[0] = rs.getString("email");
+                settings[1] = rs.getString("app_password");
+                settings[2] = rs.getString("smtp_host");
+                settings[3] = String.valueOf(rs.getInt("smtp_port"));
+                settings[4] = String.valueOf(rs.getInt("daily_email_enabled"));
+                settings[5] = rs.getString("send_time");
+                rs.close();
+                stmt.close();
+                return settings;
+            }
+            rs.close();
+            stmt.close();
+        } catch (SQLException e) {
+            System.err.println("❌ Error loading email settings: " + e.getMessage());
+        }
+        return null;
     }
 
     /**
@@ -188,6 +294,169 @@ public class DatabaseManager {
 
         } catch (SQLException e) {
             System.err.println("❌ Error clearing data: " + e.getMessage());
+        }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // USER AUTHENTICATION METHODS
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    /**
+     * Register a new user
+     * @return user ID if successful, -1 if username already exists
+     */
+    public static int registerUser(String username, String password, String email, String fullName) {
+        try {
+            Connection conn = getConnection();
+            
+            // Check if username already exists
+            String checkSql = "SELECT id FROM users WHERE username = ?";
+            PreparedStatement checkStmt = conn.prepareStatement(checkSql);
+            checkStmt.setString(1, username);
+            ResultSet rs = checkStmt.executeQuery();
+            
+            if (rs.next()) {
+                // Username already exists
+                rs.close();
+                checkStmt.close();
+                return -1;
+            }
+            rs.close();
+            checkStmt.close();
+            
+            // Hash password (simple hash for demo - use BCrypt in production)
+            String passwordHash = hashPassword(password);
+            
+            // Insert new user
+            String insertSql = "INSERT INTO users (username, password_hash, email, full_name) VALUES (?, ?, ?, ?)";
+            PreparedStatement pstmt = conn.prepareStatement(insertSql, Statement.RETURN_GENERATED_KEYS);
+            pstmt.setString(1, username);
+            pstmt.setString(2, passwordHash);
+            pstmt.setString(3, email);
+            pstmt.setString(4, fullName);
+            pstmt.executeUpdate();
+            
+            // Get generated user ID
+            ResultSet generatedKeys = pstmt.getGeneratedKeys();
+            int userId = -1;
+            if (generatedKeys.next()) {
+                userId = generatedKeys.getInt(1);
+            }
+            generatedKeys.close();
+            pstmt.close();
+            
+            System.out.println("✅ User registered: " + username + " (ID: " + userId + ")");
+            return userId;
+            
+        } catch (SQLException e) {
+            System.err.println("❌ Error registering user: " + e.getMessage());
+            return -1;
+        }
+    }
+    
+    /**
+     * Login user
+     * @return user ID if successful, -1 if login fails
+     */
+    public static int loginUser(String username, String password) {
+        try {
+            Connection conn = getConnection();
+            
+            String sql = "SELECT id, password_hash FROM users WHERE username = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, username);
+            ResultSet rs = pstmt.executeQuery();
+            
+            if (rs.next()) {
+                int userId = rs.getInt("id");
+                String storedHash = rs.getString("password_hash");
+                String inputHash = hashPassword(password);
+                
+                if (storedHash.equals(inputHash)) {
+                    // Update last login
+                    updateLastLogin(userId);
+                    rs.close();
+                    pstmt.close();
+                    System.out.println("✅ User logged in: " + username + " (ID: " + userId + ")");
+                    return userId;
+                }
+            }
+            
+            rs.close();
+            pstmt.close();
+            System.out.println("❌ Login failed for: " + username);
+            return -1;
+            
+        } catch (SQLException e) {
+            System.err.println("❌ Error during login: " + e.getMessage());
+            return -1;
+        }
+    }
+    
+    /**
+     * Update last login timestamp
+     */
+    private static void updateLastLogin(int userId) {
+        try {
+            Connection conn = getConnection();
+            String sql = "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, userId);
+            pstmt.executeUpdate();
+            pstmt.close();
+        } catch (SQLException e) {
+            System.err.println("❌ Error updating last login: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get user info
+     * @return String array: [username, email, fullName, createdAt, lastLogin]
+     */
+    public static String[] getUserInfo(int userId) {
+        try {
+            Connection conn = getConnection();
+            String sql = "SELECT username, email, full_name, created_at, last_login FROM users WHERE id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, userId);
+            ResultSet rs = pstmt.executeQuery();
+            
+            if (rs.next()) {
+                String[] info = new String[5];
+                info[0] = rs.getString("username");
+                info[1] = rs.getString("email");
+                info[2] = rs.getString("full_name");
+                info[3] = rs.getString("created_at");
+                info[4] = rs.getString("last_login");
+                rs.close();
+                pstmt.close();
+                return info;
+            }
+            
+            rs.close();
+            pstmt.close();
+        } catch (SQLException e) {
+            System.err.println("❌ Error getting user info: " + e.getMessage());
+        }
+        return null;
+    }
+    
+    /**
+     * Simple password hashing (use BCrypt in production!)
+     */
+    private static String hashPassword(String password) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(password.getBytes("UTF-8"));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("Error hashing password", e);
         }
     }
 }

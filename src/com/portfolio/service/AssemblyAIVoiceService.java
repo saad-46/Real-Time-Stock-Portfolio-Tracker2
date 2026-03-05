@@ -15,7 +15,7 @@ import org.json.*;
 public class AssemblyAIVoiceService {
     
     private static final String API_KEY = System.getenv("ASSEMBLYAI_API_KEY") != null ? 
-        System.getenv("ASSEMBLYAI_API_KEY") : "YOUR_ASSEMBLYAI_API_KEY_HERE";  // Set via environment variable
+        System.getenv("ASSEMBLYAI_API_KEY") : ApiKeyManager.getAssemblyAIKey();
     private static final String UPLOAD_URL = "https://api.assemblyai.com/v2/upload";
     private static final String TRANSCRIPT_URL = "https://api.assemblyai.com/v2/transcript";
     

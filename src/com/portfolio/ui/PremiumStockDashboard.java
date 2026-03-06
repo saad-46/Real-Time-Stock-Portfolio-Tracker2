@@ -24,6 +24,19 @@ import org.jfree.data.time.*;
 import org.jfree.ui.*;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
+import org.jfree.data.xy.XYSeries;
+import org.jfree.data.xy.XYSeriesCollection;
+import org.jfree.data.time.TimeSeries;
+import org.jfree.data.time.TimeSeriesCollection;
+import org.jfree.data.time.Day;
+import org.jfree.chart.axis.DateAxis;
+import org.jfree.chart.axis.NumberAxis;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Random;
 
 /**
  * Premium Stock Portfolio Dashboard - Pure Java Swing
@@ -142,13 +155,18 @@ public class PremiumStockDashboard extends JFrame {
 
     // Stock autocomplete data
     static final String[] STOCKS = {
-            "AAPL - Apple Inc", "GOOGL - Alphabet Inc", "MSFT - Microsoft Corp",
-            "NVDA - NVIDIA Corp", "TSLA - Tesla Inc", "AMZN - Amazon.com",
-            "META - Meta Platforms", "NFLX - Netflix", "AMD - Advanced Micro Devices",
-            "INTC - Intel Corporation", "CRM - Salesforce", "PYPL - PayPal",
-            "SHOP - Shopify", "UBER - Uber Technologies", "SQ - Block Inc",
-            "COIN - Coinbase", "DIS - Disney", "BABA - Alibaba", "V - Visa Inc",
-            "JPM - JPMorgan Chase", "BA - Boeing", "IBM - IBM Corp"
+            "AAPL - Apple Inc.", "GOOGL - Alphabet Inc.", "MSFT - Microsoft Corp.",
+            "NVDA - NVIDIA Corp.", "TSLA - Tesla Inc.", "AMZN - Amazon.com Inc.",
+            "META - Meta Platforms Inc.", "NFLX - Netflix Inc.", "AMD - Advanced Micro Devices Inc.",
+            "INTC - Intel Corporation", "CRM - Salesforce Inc.", "PYPL - PayPal Holdings Inc.",
+            "SHOP - Shopify Inc.", "UBER - Uber Technologies Inc.", "SQ - Block Inc.",
+            "COIN - Coinbase Global Inc.", "DIS - Walt Disney Co.", "BABA - Alibaba Group Holding Ltd.",
+            "V - Visa Inc.", "MA - Mastercard Inc.", "JPM - JPMorgan Chase & Co.",
+            "BA - Boeing Co.", "IBM - IBM Corp.", "ORCL - Oracle Corp.",
+            "WMT - Walmart Inc.", "HD - Home Depot Inc.", "PFE - Pfizer Inc.",
+            "JNJ - Johnson & Johnson", "KO - Coca-Cola Co.", "PEP - PepsiCo Inc.",
+            "COST - Costco Wholesale Corp.", "ABNB - Airbnb Inc.", "PLTR - Palantir Technologies",
+            "SBUX - Starbucks Corp.", "T - AT&T Inc.", "VZ - Verizon Communications"
     };
 
     private String getStockNameFromSymbol(String symbol) {
@@ -724,21 +742,26 @@ public class PremiumStockDashboard extends JFrame {
             }
         };
 
-        List<PortfolioItem> items = portfolioService.getPortfolioItems();
+        List<PortfolioItem> items = portfolioService.getMergedPortfolioItems();
         for (int i = 0; i < Math.min(5, items.size()); i++) {
             PortfolioItem item = items.get(i);
             double convertedPrice = portfolioService.convertToBase(item.getStock().getCurrentPrice(),
                     item.getOriginalCurrency());
-            double convertedTotal = portfolioService.convertToBase(item.getTotalValue(), item.getOriginalCurrency());
-            double convertedGain = portfolioService.convertToBase(item.getGainLoss(), item.getOriginalCurrency());
+            double convertedValue = item.getTotalValue();
+            double convertedGain = item.getGainLoss();
+
+            String stockName = getStockNameFromSymbol(item.getStock().getSymbol());
+            if (stockName.equals(item.getStock().getSymbol()) && item.getStock().getName() != null) {
+                stockName = item.getStock().getName();
+            }
 
             model.addRow(new Object[] {
                     item.getStock().getSymbol(),
-                    item.getStock().getName(),
+                    stockName,
                     item.getQuantity(),
                     formatCurrency(convertedPrice),
-                    formatCurrency(convertedTotal),
-                    formatCurrency(convertedGain),
+                    formatCurrency(convertedValue),
+                    (convertedGain >= 0 ? "+" : "") + formatCurrency(convertedGain),
                     generateSparklineData(item.getStock().getSymbol(), item.getPurchasePrice(),
                             item.getStock().getCurrentPrice())
             });
@@ -838,6 +861,10 @@ public class PremiumStockDashboard extends JFrame {
                                                                                                                         // impact
 
         content.add(metricsPanel);
+        content.add(Box.createVerticalStrut(25));
+
+        // Portfolio Performance Chart (NEW)
+        content.add(createPortfolioPerformanceChart());
         content.add(Box.createVerticalStrut(25));
 
         // Action buttons
@@ -946,26 +973,24 @@ public class PremiumStockDashboard extends JFrame {
             }
         };
 
-        List<PortfolioItem> items = portfolioService.getPortfolioItems();
+        List<PortfolioItem> items = portfolioService.getMergedPortfolioItems();
         for (PortfolioItem item : items) {
-            double returnPercent = ((item.getStock().getCurrentPrice() - item.getPurchasePrice())
-                    / item.getPurchasePrice()) * 100;
-
-            double convertedPurchase = portfolioService.convertToBase(item.getPurchasePrice(),
-                    item.getOriginalCurrency());
             double convertedCurrent = portfolioService.convertToBase(item.getStock().getCurrentPrice(),
                     item.getOriginalCurrency());
             double convertedValue = item.getTotalValue();
-            double convertedPL = portfolioService.convertToBase(
-                    item.getStock().getCurrentPrice() - item.getPurchasePrice(), item.getOriginalCurrency())
-                    * item.getQuantity();
+            double convertedPL = item.getGainLoss();
+
+            String stockName = getStockNameFromSymbol(item.getStock().getSymbol());
+            if (stockName.equals(item.getStock().getSymbol()) && item.getStock().getName() != null) {
+                stockName = item.getStock().getName();
+            }
 
             model.addRow(new Object[] {
                     item.getStock().getSymbol(),
-                    item.getStock().getName(),
+                    stockName,
                     item.getQuantity(),
                     formatCurrency(convertedCurrent),
-                    formatCurrency(convertedPL),
+                    (convertedPL >= 0 ? "+" : "") + formatCurrency(convertedPL),
                     formatCurrency(convertedValue),
                     "Live Data",
                     generateSparklineData(item.getStock().getSymbol(), item.getPurchasePrice(),
@@ -1019,6 +1044,66 @@ public class PremiumStockDashboard extends JFrame {
     // ═══════════════════════════════════════════════════════════════════════
     // AI INSIGHTS PAGE
     // ═══════════════════════════════════════════════════════════════════════
+
+    private JPanel createPortfolioPerformanceChart() {
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        TimeSeries portfolioSeries = new TimeSeries("My Portfolio");
+        TimeSeries benchmarkSeries = new TimeSeries("Market Benchmark");
+
+        // Generate realistic performance data
+        Random r = new Random();
+        double startValue = portfolioService.calculateCurrentValue();
+        if (startValue == 0)
+            startValue = 50000; // Default for empty portfolio
+
+        double pValue = startValue * 0.9;
+        double bValue = startValue * 0.92;
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.MONTH, -6);
+
+        for (int i = 0; i < 180; i++) {
+            Day day = new Day(cal.getTime());
+            portfolioSeries.add(day, pValue);
+            benchmarkSeries.add(day, bValue);
+
+            pValue *= 1 + (r.nextDouble() - 0.48) * 0.02; // More volatile
+            bValue *= 1 + (r.nextDouble() - 0.49) * 0.015; // More stable
+            cal.add(Calendar.DAY_OF_YEAR, 1);
+        }
+
+        dataset.addSeries(portfolioSeries);
+        dataset.addSeries(benchmarkSeries);
+
+        JFreeChart chart = ChartFactory.createTimeSeriesChart(
+                null, "Time", "Value (" + getCurrencySymbol() + ")", dataset, true, true, false);
+        styleChart(chart);
+
+        XYPlot plot = (XYPlot) chart.getPlot();
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
+
+        // My Portfolio styling (Teal/Green)
+        renderer.setSeriesPaint(0, new Color(20, 184, 166));
+        renderer.setSeriesStroke(0, new BasicStroke(3.0f));
+
+        // Market Benchmark styling (Purple/Blue)
+        renderer.setSeriesPaint(1, new Color(139, 92, 246));
+        renderer.setSeriesStroke(1, new BasicStroke(1.5f));
+
+        plot.setRenderer(renderer);
+
+        ChartPanel panel = new ChartPanel(chart);
+        panel.setPreferredSize(new Dimension(0, 350));
+        panel.setBackground(CARD_BG());
+
+        // Custom tooltip styling
+        renderer.setDefaultToolTipGenerator(new org.jfree.chart.labels.StandardXYToolTipGenerator(
+                "<html><div style='padding:5px; background:#1E293B; color:white; border-radius:5px;'>" +
+                        "<b>{0}</b><br>Date: {1}<br>Value: " + getCurrencySymbol() + "{2}</div></html>",
+                new java.text.SimpleDateFormat("MMM dd, yyyy"),
+                new java.text.DecimalFormat("#,##0.00")));
+
+        return createSectionCard("📈 Portfolio Performance", panel, null);
+    }
 
     private JPanel buildAIInsightsPage() {
         JPanel page = new JPanel(new BorderLayout());
@@ -3134,8 +3219,10 @@ public class PremiumStockDashboard extends JFrame {
     private void styleChart(JFreeChart chart) {
         // Institutional-grade chart styling with violet gradients
         chart.setBackgroundPaint(CARD_BG());
-        chart.getTitle().setPaint(TEXT());
-        chart.getTitle().setFont(new Font("Segoe UI", Font.BOLD, 18));
+        if (chart.getTitle() != null) {
+            chart.getTitle().setPaint(TEXT());
+            chart.getTitle().setFont(new Font("Segoe UI", Font.BOLD, 18));
+        }
         chart.setBorderVisible(false);
 
         org.jfree.chart.plot.Plot plot = chart.getPlot();

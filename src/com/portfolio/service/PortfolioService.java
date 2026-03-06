@@ -5,6 +5,9 @@ import com.portfolio.model.PortfolioItem; // Import PortfolioItem class
 import com.portfolio.model.Transaction; // Import Transaction class
 import java.util.ArrayList; // Import ArrayList to store lists of items
 import java.util.List; // Import List interface
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 // This class manages your entire portfolio - all your stocks and transactions
 // Think of it like a portfolio manager who tracks everything you own
@@ -365,6 +368,50 @@ public class PortfolioService {
         return portfolioItems;
     }
 
+    /**
+     * Returns a list of portfolio items where multiple entries for the same stock
+     * are merged.
+     * Quantities are summed and purchase price is calculated as a weighted
+     * average.
+     */
+    public List<PortfolioItem> getMergedPortfolioItems() {
+        if (portfolioItems.isEmpty())
+            return new ArrayList<>();
+
+        Map<String, List<PortfolioItem>> grouped = new HashMap<>();
+        for (PortfolioItem item : portfolioItems) {
+            String sym = item.getStock().getSymbol().toUpperCase();
+            grouped.computeIfAbsent(sym, k -> new ArrayList<>()).add(item);
+        }
+
+        List<PortfolioItem> mergedList = new ArrayList<>();
+        for (Map.Entry<String, List<PortfolioItem>> entry : grouped.entrySet()) {
+            List<PortfolioItem> group = entry.getValue();
+            if (group.size() == 1) {
+                mergedList.add(group.get(0));
+            } else {
+                PortfolioItem first = group.get(0);
+                Stock mergedStock = new Stock(first.getStock().getSymbol(), first.getStock().getName());
+                mergedStock.setCurrentPrice(first.getStock().getCurrentPrice());
+                mergedStock.setChangePercent(first.getStock().getChangePercent());
+                mergedStock.setSector(first.getStock().getSector());
+                mergedStock.setMarketCap(first.getStock().getMarketCap());
+                mergedStock.setRiskLevel(first.getStock().getRiskLevel());
+
+                int totalQty = 0;
+                double totalCost = 0;
+                for (PortfolioItem item : group) {
+                    totalQty += item.getQuantity();
+                    totalCost += item.getPurchasePrice() * item.getQuantity();
+                }
+
+                double avgPurchasePrice = totalQty > 0 ? totalCost / totalQty : 0;
+                mergedList.add(new PortfolioItem(mergedStock, totalQty, avgPurchasePrice, first.getOriginalCurrency()));
+            }
+        }
+        return mergedList;
+    }
+
     public List<Transaction> getTransactions() {
         return transactions;
     }
@@ -391,13 +438,13 @@ public class PortfolioService {
     }
 
     public java.util.List<PortfolioItem> getTopGainers(int limit) {
-        java.util.List<PortfolioItem> items = new java.util.ArrayList<>(getPortfolioItems());
+        java.util.List<PortfolioItem> items = new java.util.ArrayList<>(getMergedPortfolioItems());
         items.sort((a, b) -> Double.compare(b.getStock().getChangePercent(), a.getStock().getChangePercent()));
         return items.subList(0, Math.min(limit, items.size()));
     }
 
     public java.util.List<PortfolioItem> getTopLosers(int limit) {
-        java.util.List<PortfolioItem> items = new java.util.ArrayList<>(getPortfolioItems());
+        java.util.List<PortfolioItem> items = new java.util.ArrayList<>(getMergedPortfolioItems());
         items.sort((a, b) -> Double.compare(a.getStock().getChangePercent(), b.getStock().getChangePercent()));
         return items.subList(0, Math.min(limit, items.size()));
     }

@@ -191,12 +191,5 @@ public class TwelveDataService implements StockPriceService {
         }
     }
 
-    /**
-     * Gets historical price data (stub implementation).
-     */
-    @Override
-    public String getHistoricalData(String symbol) throws Exception {
-        // TwelveData historical data requires premium subscription
-        return "{}";
-    }
+
 }

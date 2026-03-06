@@ -8,60 +8,65 @@ import java.util.concurrent.*;
  * Runs at a specific time each day (e.g., 9:00 AM)
  */
 public class DailyPortfolioScheduler {
-    
+
     private final PortfolioService portfolioService;
     private final EmailService emailService;
     private ScheduledExecutorService scheduler;
     private String recipientEmail;
     private boolean isRunning = false;
-    
+
     public DailyPortfolioScheduler(PortfolioService portfolioService, EmailService emailService) {
         this.portfolioService = portfolioService;
         this.emailService = emailService;
     }
-    
+
     /**
      * Start daily email scheduler at 8:00 PM
+     * 
      * @param email Recipient email address
      */
-    public void start(String email) {
+    public void start(String email, String timeStr) {
         if (isRunning) {
             System.out.println("⚠️ Scheduler already running");
             return;
         }
-        
+
         this.recipientEmail = email;
         this.scheduler = Executors.newScheduledThreadPool(1);
-        
-        // Calculate delay until next 8:00 PM (20:00)
+
+        // Parse time (e.g., "09:00")
+        String[] parts = timeStr.split(":");
+        int hour = Integer.parseInt(parts[0]);
+        int minute = Integer.parseInt(parts[1]);
+
+        // Calculate delay until next run
         Calendar now = Calendar.getInstance();
         Calendar nextRun = Calendar.getInstance();
-        nextRun.set(Calendar.HOUR_OF_DAY, 20);  // 8 PM = 20:00
-        nextRun.set(Calendar.MINUTE, 0);
+        nextRun.set(Calendar.HOUR_OF_DAY, hour);
+        nextRun.set(Calendar.MINUTE, minute);
         nextRun.set(Calendar.SECOND, 0);
-        
-        // If it's past 8 PM today, schedule for tomorrow
+
         if (now.after(nextRun)) {
             nextRun.add(Calendar.DAY_OF_MONTH, 1);
         }
-        
+
         long initialDelay = nextRun.getTimeInMillis() - now.getTimeInMillis();
         long period = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-        
+
         scheduler.scheduleAtFixedRate(() -> {
             try {
-                System.out.println("📧 Sending daily portfolio update at 8:00 PM...");
+                System.out.println("📧 Sending daily portfolio update at " + timeStr + "...");
                 emailService.sendDailyPortfolioUpdate(recipientEmail, portfolioService);
             } catch (Exception e) {
                 System.err.println("❌ Failed to send scheduled email: " + e.getMessage());
             }
         }, initialDelay, period, TimeUnit.MILLISECONDS);
-        
+
         isRunning = true;
         System.out.println("✅ Daily email scheduler started. Next email at: " + nextRun.getTime());
-        System.out.println("📧 Will send to: " + recipientEmail + " every day at 8:00 PM");
+        System.out.println("📧 Will send to: " + recipientEmail + " every day at " + timeStr);
     }
-    
+
     /**
      * Stop the scheduler
      */
@@ -72,7 +77,7 @@ public class DailyPortfolioScheduler {
             System.out.println("⏹️ Daily email scheduler stopped");
         }
     }
-    
+
     /**
      * Send immediate test email
      */
@@ -85,7 +90,7 @@ public class DailyPortfolioScheduler {
             System.err.println("❌ Test email failed: " + e.getMessage());
         }
     }
-    
+
     /**
      * Check if scheduler is running
      */

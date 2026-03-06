@@ -33,7 +33,12 @@ public class GroqAIService {
         String portfolioContext = buildPortfolioContext();
         if (conversationHistory.isEmpty()) {
             conversationHistory.add(new Message("system",
-                    "You are 'StockVault AI', a warm and concise portfolio assistant. Indian Rupees (₹) focus. Portfolio:\n"
+                    "You are 'StockVault AI', a warm and concise portfolio assistant. Indian Rupees (₹) focus. " +
+                            "IMPORTANT: Do NOT use the words 'Buy' or 'Sell' in market condition analysis or recommendations. "
+                            +
+                            "Use terms like 'Add potential', 'Reduce exposure', 'Strong position', 'Underperforming', etc. "
+                            +
+                            "Respond with professional insights. Portfolio:\n"
                             + portfolioContext));
         }
         conversationHistory.add(new Message("user", userMessage));
@@ -74,7 +79,9 @@ public class GroqAIService {
 
     public String getRecommendations() throws Exception {
         String portfolioContext = buildPortfolioContext();
-        String prompt = "As a professional financial advisor, analyze this portfolio and provide 3-5 high-quality recommendations in Markdown. Portfolio:\n"
+        String prompt = "As a professional financial advisor, analyze this portfolio and provide 3-5 high-quality recommendations in Markdown. "
+                +
+                "IMPORTANT: Do NOT use the words 'Buy' or 'Sell'. Use modern financial terminology instead. Portfolio:\n"
                 + portfolioContext;
 
         String json = String.format(
@@ -99,8 +106,8 @@ public class GroqAIService {
         try {
             String lowerIntent = userIntent.toLowerCase();
             // Basic hardcoded logic for common intents
-            if (lowerIntent.contains("sell all") || lowerIntent.contains("clear portfolio") || 
-                lowerIntent.contains("remove all")) {
+            if (lowerIntent.contains("sell all") || lowerIntent.contains("clear portfolio") ||
+                    lowerIntent.contains("remove all")) {
                 StringBuilder result = new StringBuilder("✅ Selling all stocks:\n");
                 List<PortfolioItem> items = new ArrayList<>(portfolioService.getPortfolioItems());
                 if (items.isEmpty())
@@ -128,12 +135,12 @@ public class GroqAIService {
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            
+
             // Check for errors
             if (response.statusCode() != 200) {
                 throw new Exception("API returned status " + response.statusCode() + ": " + response.body());
             }
-            
+
             String aiResp = parseAIResponse(response.body());
 
             // Simple manual extraction from AI JSON response
@@ -141,11 +148,11 @@ public class GroqAIService {
                 String symbol = extractField(aiResp, "symbol");
                 String qtyStr = extractField(aiResp, "quantity");
                 String priceStr = extractField(aiResp, "price");
-                
+
                 if (symbol.equals("0") || qtyStr.equals("0")) {
                     return "❌ Could not understand the buy command. Please specify: 'Buy [quantity] [symbol] at [price]'";
                 }
-                
+
                 int qty = Integer.parseInt(qtyStr);
                 double price = Double.parseDouble(priceStr);
                 portfolioService.buyStock(symbol, symbol, qty, price);
@@ -153,11 +160,11 @@ public class GroqAIService {
             } else if (aiResp.contains("\"sell\"") || aiResp.contains("sell")) {
                 String symbol = extractField(aiResp, "symbol");
                 String qtyStr = extractField(aiResp, "quantity");
-                
+
                 if (symbol.equals("0")) {
                     return "❌ Could not understand the sell command. Please specify: 'Sell [quantity] [symbol]'";
                 }
-                
+
                 int qty = Integer.parseInt(qtyStr);
                 portfolioService.sellStock(symbol, qty);
                 return String.format("✅ Sold %d %s", qty, symbol);

@@ -2,6 +2,7 @@
 *.class
 bin/
 com/*.class
+src/**/*.class
 
 # API Keys & Credentials (NEVER COMMIT!)
 src/com/portfolio/service/ApiKeyManager.java

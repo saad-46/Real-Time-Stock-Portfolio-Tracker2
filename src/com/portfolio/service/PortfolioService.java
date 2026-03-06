@@ -18,6 +18,7 @@ public class PortfolioService {
     private CurrencyService currencyService; // Service for live exchange rates
     private String baseCurrency = "INR"; // Default display currency
     private NotificationManager notificationManager; // NEW: Handles desktop/in-app alerts
+    private List<com.portfolio.model.PriceAlert> priceAlerts; // NEW: User-defined price triggers
 
     // Constructor - creates a new portfolio manager
     // Example: new PortfolioService(alphaVantageService)
@@ -29,6 +30,7 @@ public class PortfolioService {
         this.portfolioDAO = new com.portfolio.database.PortfolioDAO(); // Create database access object
         this.currencyService = new CurrencyService(); // Initialize currency service
         this.notificationManager = NotificationManager.getInstance(); // Initialize notification manager
+        this.priceAlerts = new ArrayList<>(); // Initialize empty alert list
 
         // Load existing data from database when service starts
         loadFromDatabase();
@@ -47,7 +49,37 @@ public class PortfolioService {
                 double newPrice = s.getCurrentPrice() * (1 + change);
                 s.setCurrentPrice(newPrice);
             }
+            checkPriceAlerts();
         }).start();
+    }
+
+    private void checkPriceAlerts() {
+        for (com.portfolio.model.PriceAlert alert : priceAlerts) {
+            if (alert.isTriggered())
+                continue;
+
+            double current = 0;
+            // Find price in portfolio or watchlist
+            for (PortfolioItem item : portfolioItems) {
+                if (item.getStock().getSymbol().equalsIgnoreCase(alert.getSymbol())) {
+                    current = item.getStock().getCurrentPrice();
+                    break;
+                }
+            }
+            if (current == 0) {
+                for (Stock s : watchlist) {
+                    if (s.getSymbol().equalsIgnoreCase(alert.getSymbol())) {
+                        current = s.getCurrentPrice();
+                        break;
+                    }
+                }
+            }
+
+            if (current != 0 && alert.checkCondition(current)) {
+                alert.setTriggered(true);
+                notificationManager.showPriceAlert(alert.getSymbol(), alert.getTargetPrice(), current);
+            }
+        }
     }
 
     // Loads all portfolio data from database
@@ -101,7 +133,8 @@ public class PortfolioService {
     }
 
     // Method to buy stock with full details
-    // Example: buyStock("AAPL", "Apple Inc.", 10, 150.0) means "Buy 10 Apple shares
+    // Example: buyStock("AAPL", "Apple Inc.", 10, 150.0) means "ENTRY 10 Apple
+    // shares
     // at $150 each"
     public void buyStock(String symbol, String name, int quantity, double price, String currency, String sector,
             String marketCap, String riskLevel) {
@@ -329,17 +362,13 @@ public class PortfolioService {
     // Getter - returns the list of portfolio items
     // Example: service.getPortfolioItems() returns [Apple x10, Tesla x5]
     public List<PortfolioItem> getPortfolioItems() {
-        return portfolioItems; // Return the list
+        return portfolioItems;
     }
 
-    // Getter - returns the list of transactions
-    // Example: service.getTransactions() returns all buy/sell history
     public List<Transaction> getTransactions() {
-        return transactions; // Return the list
+        return transactions;
     }
 
-    // Getter - returns the price service
-    // Used by servlet to access historical data methods
     public StockPriceService getPriceService() {
         return priceService;
     }
@@ -408,5 +437,34 @@ public class PortfolioService {
             weightedBeta += beta * weight;
         }
         return weightedBeta;
+    }
+
+    public void updateStockPrice(String symbol, double newPrice) {
+        boolean found = false;
+        for (PortfolioItem item : portfolioItems) {
+            if (item.getStock().getSymbol().equalsIgnoreCase(symbol)) {
+                item.getStock().setCurrentPrice(newPrice);
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            for (Stock s : watchlist) {
+                if (s.getSymbol().equalsIgnoreCase(symbol)) {
+                    s.setCurrentPrice(newPrice);
+                    break;
+                }
+            }
+        }
+        checkPriceAlerts();
+    }
+
+    public void addPriceAlert(com.portfolio.model.PriceAlert alert) {
+        priceAlerts.add(alert);
+        System.out.println("🔔 Price alert set for " + alert.getSymbol() + " at ₹" + alert.getTargetPrice());
+    }
+
+    public List<com.portfolio.model.PriceAlert> getPriceAlerts() {
+        return priceAlerts;
     }
 }

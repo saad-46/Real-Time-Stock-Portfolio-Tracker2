@@ -214,7 +214,7 @@ public class PremiumStockDashboard extends JFrame {
         this.emailScheduler = new DailyPortfolioScheduler(portfolioService, emailService);
 
         // Initial configuration
-        emailScheduler.start("");
+        emailScheduler.start("", "20:00");
         System.out.println("✅ Daily email scheduler initialized.");
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -1077,7 +1077,9 @@ public class PremiumStockDashboard extends JFrame {
                 new java.text.SimpleDateFormat("MMM dd, yyyy"),
                 new java.text.DecimalFormat("#,##0.00")));
 
-        return createSectionCard("📈 Portfolio Performance", panel, null);
+        JPanel card = createCard("📈 Portfolio Performance");
+        card.add(panel);
+        return card;
     }
 
     private JPanel buildAIInsightsPage() {
@@ -3378,9 +3380,8 @@ public class PremiumStockDashboard extends JFrame {
                 new Color(118, 75, 162), 0, 20, new Color(118, 75, 162, 180));
             
             renderer.setSeriesPaint(0, barGradient1);
-            if (renderer.getSeriesCount() > 1) {
-                renderer.setSeriesPaint(1, barGradient2);
-            }
+            // Set paint for potential second series
+            renderer.setSeriesPaint(1, barGradient2);
             
         } else if (plot instanceof org.jfree.chart.plot.XYPlot) {
             org.jfree.chart.plot.XYPlot xyPlot = (org.jfree.chart.plot.XYPlot) plot;
@@ -3423,25 +3424,18 @@ public class PremiumStockDashboard extends JFrame {
             
             // Institutional violet line with gradient effect
             renderer.setSeriesPaint(0, new Color(102, 126, 234));
-            renderer.setSeriesStroke(0, new BasicStroke(3.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            renderer.setSeriesStroke(0, new BasicStroke(3.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                    10.0f, new float[] { 2.0f, 2.0f }, 0.0f));
             renderer.setSeriesShapesVisible(0, true);
             renderer.setSeriesShape(0, new java.awt.geom.Ellipse2D.Double(-3, -3, 6, 6));
             renderer.setSeriesShapesFilled(0, true);
-            
-            xyPlot.setRenderer(renderer);
-        }
-    }
-                    new float[] { 2.0f, 2.0f }, 0.0f));
             
             // Style axes
             xyPlot.getDomainAxis().setLabelPaint(new Color(200, 200, 220));
             xyPlot.getDomainAxis().setTickLabelPaint(new Color(180, 180, 200));
             xyPlot.getRangeAxis().setLabelPaint(new Color(200, 200, 220));
             xyPlot.getRangeAxis().setTickLabelPaint(new Color(180, 180, 200));
-
-            org.jfree.chart.renderer.xy.XYLineAndShapeRenderer renderer = new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer();
-            renderer.setSeriesPaint(0, ACCENT);
-            renderer.setSeriesStroke(0, new BasicStroke(3.0f));
+            
             xyPlot.setRenderer(renderer);
         }
     }
@@ -3740,7 +3734,7 @@ public class PremiumStockDashboard extends JFrame {
             }
 
             if (enableDaily.isSelected() && emailService.isConfigured()) {
-                emailScheduler.start(emailField.getText());
+                emailScheduler.start(emailField.getText(), "20:00");
             } else {
                 emailScheduler.stop();
             }

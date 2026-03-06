@@ -141,4 +141,17 @@ public class FinnhubService implements StockPriceService {
             return 0.0;
         }
     }
+
+    /**
+     * Gets historical data for a stock (required by interface).
+     * Note: Finnhub historical data requires premium subscription.
+     * This implementation returns a placeholder message.
+     */
+    @Override
+    public String getHistoricalData(String symbol) throws Exception {
+        // Finnhub historical candles require premium subscription
+        // Return empty JSON for now
+        return "{\"status\":\"not_available\",\"message\":\"Historical data requires premium Finnhub subscription\"}";
+    }
 }
+

@@ -976,6 +976,30 @@ public class PremiumStockDashboard extends JFrame {
         JTable table = createStyledTable(model);
         table.getColumnModel().getColumn(7).setCellRenderer(new SparklineCellRenderer());
         table.setRowHeight(45);
+        
+        // Add double-click handler to open detailed analysis
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = table.getSelectedRow();
+                    if (row >= 0) {
+                        String symbol = (String) table.getValueAt(row, 0);
+                        PortfolioItem item = portfolioService.getPortfolioItems().stream()
+                            .filter(i -> i.getStock().getSymbol().equals(symbol))
+                            .findFirst()
+                            .orElse(null);
+                        
+                        if (item != null) {
+                            DetailedMarketAnalysisDialog dialog = new DetailedMarketAnalysisDialog(
+                                PremiumStockDashboard.this, item.getStock(), portfolioService);
+                            dialog.setVisible(true);
+                        }
+                    }
+                }
+            }
+        });
+        
         JScrollPane scroll = new JScrollPane(table);
         scroll.setBackground(CARD_BG);
         scroll.getViewport().setBackground(CARD_BG);
@@ -1126,19 +1150,34 @@ public class PremiumStockDashboard extends JFrame {
         JPanel page = new JPanel(new BorderLayout());
         page.setBackground(BG());
 
+        // Professional header with terminal styling
         JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(SIDEBAR_BG());
+        header.setBackground(new Color(20, 20, 40));
         header.setBorder(new EmptyBorder(20, 25, 20, 25));
 
-        JLabel title = new JLabel("🗞️ Global Market News Feed");
-        title.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        title.setForeground(ACCENT);
-        header.add(title, BorderLayout.WEST);
+        JPanel titlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
+        titlePanel.setOpaque(false);
+        
+        JLabel title = new JLabel("📊 INSTITUTIONAL NEWS TERMINAL");
+        title.setFont(new Font("Consolas", Font.BOLD, 20));
+        title.setForeground(new Color(102, 126, 234));
+        titlePanel.add(title);
+        
+        // Live indicator badge
+        JLabel liveIndicator = createTerminalBadge("● LIVE", new Color(74, 222, 128));
+        titlePanel.add(liveIndicator);
+        
+        header.add(titlePanel, BorderLayout.WEST);
 
-        JButton refreshBtn = createStyledButton("🔄 Refresh Feed", ACCENT);
+        JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        controlPanel.setOpaque(false);
+        
+        JButton refreshBtn = createStyledButton("⟳ REFRESH FEED", ACCENT);
+        refreshBtn.setFont(new Font("Consolas", Font.BOLD, 12));
         refreshBtn.setPreferredSize(new Dimension(160, 40));
-        header.add(refreshBtn, BorderLayout.EAST);
-
+        controlPanel.add(refreshBtn);
+        
+        header.add(controlPanel, BorderLayout.EAST);
         page.add(header, BorderLayout.NORTH);
 
         JPanel newsContainer = new JPanel();
@@ -1153,7 +1192,8 @@ public class PremiumStockDashboard extends JFrame {
 
         Runnable loadNews = () -> {
             newsContainer.removeAll();
-            JLabel loading = new JLabel("⌛ Fetching latest financial headlines...");
+            JLabel loading = new JLabel("⌛ SCANNING GLOBAL FINANCIAL NETWORKS...");
+            loading.setFont(new Font("Consolas", Font.PLAIN, 14));
             loading.setForeground(TEXT_DIM());
             loading.setBorder(new EmptyBorder(20, 0, 0, 0));
             newsContainer.add(loading);
@@ -1166,43 +1206,15 @@ public class PremiumStockDashboard extends JFrame {
                     SwingUtilities.invokeLater(() -> {
                         newsContainer.removeAll();
                         if (news == null || news.isEmpty()) {
-                            JLabel empty = new JLabel("No news articles found at this moment.");
+                            JLabel empty = new JLabel("NO MARKET DATA STREAMS AVAILABLE");
+                            empty.setFont(new Font("Consolas", Font.PLAIN, 14));
                             empty.setForeground(TEXT_DIM());
                             newsContainer.add(empty);
                         } else {
                             for (NewsService.NewsItem n : news) {
-                                JPanel card = createCard(n.getTitle());
-                                card.setLayout(new BorderLayout(15, 10));
-                                card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
-
-                                JTextArea summary = new JTextArea(n.getDescription());
-                                summary.setWrapStyleWord(true);
-                                summary.setLineWrap(true);
-                                summary.setEditable(false);
-                                summary.setBackground(CARD_BG());
-                                summary.setForeground(TEXT_DIM());
-                                summary.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-                                card.add(summary, BorderLayout.CENTER);
-
-                                JPanel metaPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-                                metaPanel.setOpaque(false);
-
-                                JLabel sourceLabel = new JLabel(n.getSource());
-                                sourceLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
-                                sourceLabel.setForeground(TEXT());
-                                metaPanel.add(sourceLabel);
-
-                                metaPanel.add(createTag(n.getCategory(), ACCENT));
-
-                                String sentiment = n.getSentiment();
-                                Color sentColor = sentiment.equalsIgnoreCase("Positive") ? GREEN
-                                        : sentiment.equalsIgnoreCase("Negative") ? RED : TEXT_DIM();
-                                metaPanel.add(createTag(sentiment, sentColor));
-
-                                card.add(metaPanel, BorderLayout.SOUTH);
-
+                                JPanel card = createInstitutionalNewsCard(n);
                                 newsContainer.add(card);
-                                newsContainer.add(Box.createVerticalStrut(15));
+                                newsContainer.add(Box.createVerticalStrut(12));
                             }
                         }
                         newsContainer.revalidate();
@@ -1211,7 +1223,10 @@ public class PremiumStockDashboard extends JFrame {
                 } catch (Exception ex) {
                     SwingUtilities.invokeLater(() -> {
                         newsContainer.removeAll();
-                        newsContainer.add(new JLabel("❌ Error loading news: " + ex.getMessage()));
+                        JLabel error = new JLabel("❌ NETWORK ERROR: " + ex.getMessage());
+                        error.setFont(new Font("Consolas", Font.PLAIN, 14));
+                        error.setForeground(RED);
+                        newsContainer.add(error);
                         newsContainer.revalidate();
                         newsContainer.repaint();
                     });
@@ -1223,6 +1238,75 @@ public class PremiumStockDashboard extends JFrame {
         loadNews.run();
 
         return page;
+    }
+
+    // Terminal-style badge creator
+    private JLabel createTerminalBadge(String text, Color color) {
+        JLabel badge = new JLabel(text);
+        badge.setFont(new Font("Consolas", Font.BOLD, 10));
+        badge.setForeground(Color.WHITE);
+        badge.setOpaque(true);
+        badge.setBackground(color);
+        badge.setBorder(new EmptyBorder(4, 8, 4, 8));
+        badge.setHorizontalAlignment(SwingConstants.CENTER);
+        return badge;
+    }
+
+    // Enhanced institutional news card
+    private JPanel createInstitutionalNewsCard(NewsService.NewsItem n) {
+        JPanel card = createCard("");
+        card.setLayout(new BorderLayout(15, 12));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 140));
+        card.setBorder(new CompoundBorder(
+            new LineBorder(new Color(102, 126, 234, 60), 1, true),
+            new EmptyBorder(15, 20, 15, 20)
+        ));
+
+        // Title with institutional styling
+        JLabel titleLabel = new JLabel(n.getTitle());
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        titleLabel.setForeground(TEXT());
+        card.add(titleLabel, BorderLayout.NORTH);
+
+        // Description
+        JTextArea summary = new JTextArea(n.getDescription());
+        summary.setWrapStyleWord(true);
+        summary.setLineWrap(true);
+        summary.setEditable(false);
+        summary.setBackground(CARD_BG());
+        summary.setForeground(TEXT_DIM());
+        summary.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        summary.setRows(2);
+        card.add(summary, BorderLayout.CENTER);
+
+        // Terminal-style metadata panel
+        JPanel metaPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+        metaPanel.setOpaque(false);
+
+        // Source badge
+        JLabel sourceLabel = createTerminalBadge("SRC: " + n.getSource().toUpperCase(), 
+            new Color(59, 130, 246));
+        metaPanel.add(sourceLabel);
+
+        // Category badge
+        JLabel categoryBadge = createTerminalBadge("CAT: " + n.getCategory().toUpperCase(), 
+            new Color(139, 92, 246));
+        metaPanel.add(categoryBadge);
+
+        // Sentiment badge with color coding
+        String sentiment = n.getSentiment();
+        Color sentColor = sentiment.equalsIgnoreCase("Positive") ? new Color(74, 222, 128)
+                : sentiment.equalsIgnoreCase("Negative") ? new Color(248, 113, 113) 
+                : new Color(156, 163, 175);
+        JLabel sentimentBadge = createTerminalBadge("SENT: " + sentiment.toUpperCase(), sentColor);
+        metaPanel.add(sentimentBadge);
+
+        // Timestamp badge
+        JLabel timeBadge = createTerminalBadge("LIVE", new Color(74, 222, 128));
+        metaPanel.add(timeBadge);
+
+        card.add(metaPanel, BorderLayout.SOUTH);
+        return card;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1852,270 +1936,28 @@ public class PremiumStockDashboard extends JFrame {
     }
 
     private void showDetailedAnalysis(String symbol) {
-        JDialog dialog = new JDialog(this, symbol + " \u2022 Detailed Market Analysis", true);
-        dialog.setSize(1350, 900);
-        dialog.setLocationRelativeTo(this);
-        dialog.getContentPane().setBackground(BG());
-
-        JPanel root = new JPanel(new BorderLayout(5, 5));
-        root.setBackground(BG());
-        root.setBorder(new EmptyBorder(10, 10, 10, 10));
-
-        // Get AI Analysis for insights
-        RuleBasedAIAnalysis.AnalysisResult aiResult = ruleBasedAI.analyzeStock(new Stock(symbol, symbol));
-
-        // ---------------------------------------------------------------------
-        // LEFT SECTION (Chart + Action Cards)
-        // ---------------------------------------------------------------------
-        JPanel leftPanel = new JPanel(new BorderLayout(20, 20));
-        leftPanel.setOpaque(false);
-
-        // 1. Chart Card
-        JPanel chartCard = createCard(symbol + " Real-Time Index");
-        chartCard.setLayout(new BorderLayout());
-        chartCard.setPreferredSize(new Dimension(900, 500));
-
-        // Time Filters Header
-        JPanel chartHeader = new JPanel(new BorderLayout());
-        chartHeader.setOpaque(false);
-        chartHeader.setBorder(new EmptyBorder(0, 0, 15, 0));
-
-        JLabel mainTitle = new JLabel(symbol + " Real-Time Index");
-        mainTitle.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        mainTitle.setForeground(TEXT());
-
-        final JPanel chartWrapper = new JPanel(new BorderLayout());
-        chartWrapper.setOpaque(false);
-
-        JPanel timeFilters = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
-        timeFilters.setOpaque(false);
-        String[] ranges = { "1D", "1W", "1M", "6M", "1Y" };
-        final JButton[] filterBtns = new JButton[ranges.length];
-
-        for (int i = 0; i < ranges.length; i++) {
-            final String r = ranges[i];
-            filterBtns[i] = new JButton(r);
-            filterBtns[i].setFont(new Font("Segoe UI", Font.BOLD, 13));
-            filterBtns[i].setForeground(r.equals("1D") ? ACCENT : TEXT_DIM());
-            filterBtns[i].setBorderPainted(false);
-            filterBtns[i].setContentAreaFilled(false);
-            filterBtns[i].setCursor(new Cursor(Cursor.HAND_CURSOR));
-
-            filterBtns[i].addActionListener(e -> {
-                for (JButton b : filterBtns)
-                    b.setForeground(TEXT_DIM());
-                ((JButton) e.getSource()).setForeground(ACCENT);
-                chartWrapper.removeAll();
-                ChartPanel newChart = createTechnicalChart(symbol, r);
-                newChart.setPreferredSize(new Dimension(900, 450));
-                chartWrapper.add(newChart, BorderLayout.CENTER);
-                chartWrapper.revalidate();
-                chartWrapper.repaint();
-            });
-            timeFilters.add(filterBtns[i]);
-        }
-        chartHeader.add(mainTitle, BorderLayout.WEST);
-        chartHeader.add(timeFilters, BorderLayout.EAST);
-        chartCard.add(chartHeader, BorderLayout.NORTH);
-
-        // 1. Chart Data & Professional Chart
-        double currentPriceInit = 646.18;
-        try {
-            currentPriceInit = portfolioService.getPortfolioItems().stream()
-                    .filter(item -> item.getStock().getSymbol().equalsIgnoreCase(symbol))
-                    .map(item -> item.getStock().getCurrentPrice())
-                    .findFirst().orElse(646.18);
-        } catch (Exception ex) {
-        }
-
-        final double[] sharedPrice = { currentPriceInit };
-
-        ChartPanel initialChart = createTechnicalChart(symbol, "1D");
-        initialChart.setPreferredSize(new Dimension(900, 450));
-        chartWrapper.add(initialChart, BorderLayout.CENTER);
-        chartCard.add(chartWrapper, BorderLayout.CENTER);
-
-        leftPanel.add(chartCard, BorderLayout.NORTH);
-
-        // Sidebar Metrics Labels for Live Update
-        final JPanel priceRow = createMetricLine("Current Price", "₹" + String.format("%.2f", sharedPrice[0]));
-
-        // Simulation Timer
-        javax.swing.Timer simTimer = new javax.swing.Timer(3000, e -> {
-            sharedPrice[0] += (new Random().nextDouble() - 0.48) * 5;
-            ((JLabel) priceRow.getComponent(1)).setText("₹" + String.format("%.2f", sharedPrice[0]));
-            portfolioService.updateStockPrice(symbol, sharedPrice[0]);
-        });
-        simTimer.start();
-        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosing(java.awt.event.WindowEvent e) {
-                simTimer.stop();
-            }
-        });
-
-        // 2. Action Grid (Bottom)
-        JPanel actionGrid = new JPanel(new GridLayout(1, 2, 20, 0));
-        actionGrid.setOpaque(false);
-        actionGrid.setPreferredSize(new Dimension(0, 280));
-
-        // Action Panel 1: Price Alert
-        JPanel alertPanel = createCard("🔔 Price Alert");
-        alertPanel.setLayout(new GridBagLayout());
-        GridBagConstraints agbc = new GridBagConstraints();
-        agbc.fill = GridBagConstraints.HORIZONTAL;
-        agbc.insets = new Insets(10, 10, 10, 10);
-        agbc.weightx = 1.0;
-
-        agbc.gridy = 0;
-        JLabel targetLbl = new JLabel("Target Price:");
-        targetLbl.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        targetLbl.setForeground(TEXT());
-        alertPanel.add(targetLbl, agbc);
-
-        agbc.gridy = 1;
-        JTextField targetField = createInputField("Enter ₹ price...");
-        alertPanel.add(targetField, agbc);
-
-        agbc.gridy = 2;
-        JPanel radioPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
-        radioPanel.setOpaque(false);
-        JRadioButton aboveRadio = new JRadioButton("Above Price", true);
-        JRadioButton belowRadio = new JRadioButton("Below Price");
-        aboveRadio.setOpaque(false);
-        belowRadio.setOpaque(false);
-        aboveRadio.setForeground(TEXT());
-        belowRadio.setForeground(TEXT());
-        ButtonGroup bg = new ButtonGroup();
-        bg.add(aboveRadio);
-        bg.add(belowRadio);
-        radioPanel.add(aboveRadio);
-        radioPanel.add(belowRadio);
-        alertPanel.add(radioPanel, agbc);
-
-        agbc.gridy = 3;
-        JButton setAlertBtn = createStyledButton("\uD83D\uDD14 Set Alert", ACCENT);
-        setAlertBtn.addActionListener(e -> {
-            String targetStr = targetField.getText().trim();
-            if (!targetStr.isEmpty()) {
+        // Find or create stock object
+        Stock stock = portfolioService.getPortfolioItems().stream()
+            .filter(item -> item.getStock().getSymbol().equalsIgnoreCase(symbol))
+            .map(PortfolioItem::getStock)
+            .findFirst()
+            .orElseGet(() -> {
+                // Create a new stock object if not in portfolio
+                Stock newStock = new Stock(symbol, symbol);
                 try {
-                    double tPrice = Double.parseDouble(targetStr);
-                    boolean isAbove = aboveRadio.isSelected();
-                    portfolioService.addPriceAlert(new com.portfolio.model.PriceAlert(symbol, tPrice, isAbove));
-                    JOptionPane.showMessageDialog(dialog, "🔔 Alert set for " + symbol + " at ₹" + targetStr,
-                            "Alert Created", JOptionPane.INFORMATION_MESSAGE);
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(dialog, "Invalid target price", "Error", JOptionPane.ERROR_MESSAGE);
+                    portfolioService.getPriceService().updateStockPrice(newStock);
+                } catch (Exception e) {
+                    newStock.setCurrentPrice(646.18); // Default price
                 }
-            }
-        });
-        alertPanel.add(setAlertBtn, agbc);
-
-        // Action Panel 2: AI Insights (Summary)
-        JPanel aiCard = createCard("🧠 AI Insights");
-        aiCard.setLayout(new BorderLayout(0, 15));
-
-        JLabel recLabel = new JLabel("✔ " + aiResult.recommendation);
-        recLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        recLabel.setForeground(GREEN);
-
-        JTextArea aiText = new JTextArea(aiResult.insight);
-        aiText.setLineWrap(true);
-        aiText.setWrapStyleWord(true);
-        aiText.setEditable(false);
-        aiText.setOpaque(false);
-        aiText.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        aiText.setForeground(TEXT_DIM());
-
-        aiCard.add(recLabel, BorderLayout.NORTH);
-        aiCard.add(aiText, BorderLayout.CENTER);
-
-        actionGrid.add(alertPanel);
-        actionGrid.add(aiCard);
-
-        leftPanel.add(actionGrid, BorderLayout.CENTER);
-
-        // ---------------------------------------------------------------------
-        // RIGHT SECTION (Sidebar: Metrics + Actions + AI Stats)
-        // ---------------------------------------------------------------------
-        JPanel sidebar = new JPanel();
-        sidebar.setLayout(new BoxLayout(sidebar, BoxLayout.Y_AXIS));
-        sidebar.setBackground(CARD_BG());
-        sidebar.setPreferredSize(new Dimension(380, 0));
-        sidebar.setBorder(new CompoundBorder(new MatteBorder(0, 1, 0, 0, BORDER()), new EmptyBorder(25, 25, 25, 25)));
-
-        // 1. Security Metrics
-        JLabel metricsTitle = new JLabel("\uD83D\uDCC8 Security Metrics");
-        metricsTitle.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        metricsTitle.setForeground(TEXT());
-        sidebar.add(metricsTitle);
-        sidebar.add(Box.createVerticalStrut(20));
-
-        sidebar.add(createMetricLine("Market Cap", "₹3.1T"));
-        sidebar.add(priceRow);
-        sidebar.add(createMetricLine("Today's High", "₹788.06"));
-        sidebar.add(createMetricLine("Today's Low", "₹588.06"));
-        sidebar.add(createMetricLine("52 Week High", "₹19,250.00"));
-        sidebar.add(createMetricLine("52 Week Low", "₹14,100.00"));
-        sidebar.add(createMetricLine("Volume", "42.5M"));
-        sidebar.add(createMetricLine("P/E Ratio", "28.4"));
-        sidebar.add(createMetricLine("Dividend Yield", "0.65%"));
-        sidebar.add(createMetricLine("Sector", "Technology"));
-        sidebar.add(createMetricLine("Industry", "Consumer Electronics"));
-
-        sidebar.add(Box.createVerticalStrut(30));
-
-        // 2. AI Detailed Insights (Metrics)
-        JPanel aiStats = new JPanel();
-        aiStats.setLayout(new BoxLayout(aiStats, BoxLayout.Y_AXIS));
-        aiStats.setOpaque(false);
-
-        JPanel aiHeader = new JPanel(new BorderLayout());
-        aiHeader.setOpaque(false);
-        JLabel aiLabel = new JLabel("🧠 AI Insights");
-        aiLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        aiLabel.setForeground(ACCENT);
-
-        JPanel scoreLbl = createTag(aiResult.totalScore + " / 10", ACCENT);
-        aiHeader.add(aiLabel, BorderLayout.WEST);
-        aiHeader.add(scoreLbl, BorderLayout.EAST);
-        aiStats.add(aiHeader);
-        aiStats.add(Box.createVerticalStrut(15));
-
-        aiStats.add(createDetailedAIRow("✅", "Trend", aiResult.trend));
-        aiStats.add(createDetailedAIRow("⚡", "Momentum", aiResult.momentum));
-        aiStats.add(createDetailedAIRow("🔥", "Volatility", aiResult.volatility));
-        aiStats.add(createDetailedAIRow("🗄", "Diversification", aiResult.diversificationImpact));
-
-        sidebar.add(aiStats);
-        sidebar.add(Box.createVerticalStrut(30));
-
-        // 3. Trading Buttons
-        JPanel tradeButtons = new JPanel(new GridLayout(1, 2, 10, 0));
-        tradeButtons.setOpaque(false);
-        tradeButtons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
-
-        JButton buyBtn = createStyledButton("💰 Buy Stock", GREEN);
-        JButton sellBtn = createStyledButton("💸 Sell Stock", RED);
-
-        buyBtn.addActionListener(e -> showBuyStockDialog(symbol));
-        sellBtn.addActionListener(e -> showSellStockDialog(symbol));
-
-        tradeButtons.add(buyBtn);
-        tradeButtons.add(sellBtn);
-        sidebar.add(tradeButtons);
-
-        JScrollPane sidebarScroll = new JScrollPane(sidebar);
-        sidebarScroll.setBorder(null);
-        sidebarScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-
-        root.add(leftPanel, BorderLayout.CENTER);
-        root.add(sidebarScroll, BorderLayout.EAST);
-
-        dialog.add(root);
+                return newStock;
+            });
+        
+        // Open the new institutional-grade detailed analysis dialog
+        DetailedMarketAnalysisDialog dialog = new DetailedMarketAnalysisDialog(
+            this, stock, portfolioService);
         dialog.setVisible(true);
     }
-
+    
     private void showBuyStockDialog(String symbol) {
         showTradeDialog(symbol, true);
     }
@@ -2639,55 +2481,141 @@ public class PremiumStockDashboard extends JFrame {
     }
 
     private void styleChart(JFreeChart chart) {
+        // Institutional-grade chart styling with violet gradients
         chart.setBackgroundPaint(CARD_BG());
         chart.getTitle().setPaint(TEXT());
-        chart.getTitle().setFont(FONT_HEADING);
+        chart.getTitle().setFont(new Font("Segoe UI", Font.BOLD, 18));
         chart.setBorderVisible(false);
 
         org.jfree.chart.plot.Plot plot = chart.getPlot();
-        plot.setBackgroundPaint(BG());
+        
+        // Create violet gradient background for institutional feel
+        GradientPaint violetGradient = new GradientPaint(0, 0, 
+            new Color(102, 126, 234, 30), 0, 400, 
+            new Color(118, 75, 162, 15));
+        plot.setBackgroundPaint(violetGradient);
         plot.setOutlineVisible(false);
 
         if (plot instanceof org.jfree.chart.plot.PiePlot) {
             org.jfree.chart.plot.PiePlot piePlot = (org.jfree.chart.plot.PiePlot) plot;
-            piePlot.setLabelFont(FONT_SMALL);
+            piePlot.setLabelFont(new Font("Segoe UI", Font.PLAIN, 11));
             piePlot.setLabelPaint(TEXT());
             piePlot.setShadowPaint(null);
             piePlot.setOutlineVisible(false);
             piePlot.setBackgroundPaint(null);
-            piePlot.setLabelBackgroundPaint(null);
-            piePlot.setLabelOutlinePaint(null);
+            piePlot.setLabelBackgroundPaint(new Color(0, 0, 0, 120));
+            piePlot.setLabelOutlinePaint(new Color(102, 126, 234, 80));
             piePlot.setLabelShadowPaint(null);
+            
+            // Enhanced institutional color palette for sectors
+            Color[] institutionalColors = {
+                new Color(102, 126, 234), // Primary violet
+                new Color(118, 75, 162),  // Deep purple
+                new Color(74, 222, 128),  // Success green
+                new Color(248, 113, 113), // Alert red
+                new Color(251, 191, 36),  // Warning amber
+                new Color(59, 130, 246),  // Info blue
+                new Color(139, 92, 246),  // Indigo
+                new Color(236, 72, 153)   // Pink
+            };
+            
+            for (int i = 0; i < piePlot.getDataset().getItemCount(); i++) {
+                piePlot.setSectionPaint(piePlot.getDataset().getKey(i), 
+                    institutionalColors[i % institutionalColors.length]);
+            }
+            
         } else if (plot instanceof CategoryPlot) {
             CategoryPlot catPlot = (CategoryPlot) plot;
-            catPlot.setRangeGridlinePaint(TEXT_DIM());
-            catPlot.setRangeGridlineStroke(new BasicStroke(1.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1.0f,
-                    new float[] { 4.0f, 4.0f }, 0.0f));
+            
+            // High-density professional grid lines
+            catPlot.setRangeGridlinePaint(new Color(102, 126, 234, 40));
+            catPlot.setDomainGridlinePaint(new Color(102, 126, 234, 25));
+            catPlot.setRangeGridlinesVisible(true);
+            catPlot.setDomainGridlinesVisible(true);
+            
+            // Enhanced grid line styling - high density
+            catPlot.setRangeGridlineStroke(new BasicStroke(0.8f, BasicStroke.CAP_ROUND, 
+                BasicStroke.JOIN_ROUND, 1.0f, new float[] { 2.0f, 2.0f }, 0.0f));
+            catPlot.setDomainGridlineStroke(new BasicStroke(0.5f, BasicStroke.CAP_ROUND, 
+                BasicStroke.JOIN_ROUND, 1.0f, new float[] { 1.5f, 1.5f }, 0.0f));
+            
+            // Professional typography
             catPlot.getDomainAxis().setLabelPaint(TEXT());
-            catPlot.getDomainAxis().setTickLabelPaint(TEXT());
+            catPlot.getDomainAxis().setTickLabelPaint(TEXT_DIM());
+            catPlot.getDomainAxis().setLabelFont(new Font("Segoe UI", Font.BOLD, 12));
+            catPlot.getDomainAxis().setTickLabelFont(new Font("Segoe UI", Font.PLAIN, 10));
+            
             catPlot.getRangeAxis().setLabelPaint(TEXT());
-            catPlot.getRangeAxis().setTickLabelPaint(TEXT());
+            catPlot.getRangeAxis().setTickLabelPaint(TEXT_DIM());
+            catPlot.getRangeAxis().setLabelFont(new Font("Segoe UI", Font.BOLD, 12));
+            catPlot.getRangeAxis().setTickLabelFont(new Font("Segoe UI", Font.PLAIN, 10));
 
-            org.jfree.chart.renderer.category.BarRenderer renderer = (org.jfree.chart.renderer.category.BarRenderer) catPlot
-                    .getRenderer();
+            org.jfree.chart.renderer.category.BarRenderer renderer = 
+                (org.jfree.chart.renderer.category.BarRenderer) catPlot.getRenderer();
             renderer.setShadowVisible(false);
             renderer.setDrawBarOutline(false);
-            renderer.setItemMargin(0.1);
+            renderer.setItemMargin(0.05);
+            
+            // Violet gradient bars for institutional look
+            GradientPaint barGradient1 = new GradientPaint(0, 0, 
+                new Color(102, 126, 234), 0, 20, new Color(102, 126, 234, 180));
+            GradientPaint barGradient2 = new GradientPaint(0, 0, 
+                new Color(118, 75, 162), 0, 20, new Color(118, 75, 162, 180));
+            
+            renderer.setSeriesPaint(0, barGradient1);
+            if (renderer.getSeriesCount() > 1) {
+                renderer.setSeriesPaint(1, barGradient2);
+            }
+            
         } else if (plot instanceof org.jfree.chart.plot.XYPlot) {
             org.jfree.chart.plot.XYPlot xyPlot = (org.jfree.chart.plot.XYPlot) plot;
-            xyPlot.setRangeGridlinePaint(TEXT_DIM());
-            xyPlot.setRangeGridlineStroke(new BasicStroke(1.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1.0f,
-                    new float[] { 4.0f, 4.0f }, 0.0f));
+            
+            // High-density crosshair grid system
+            xyPlot.setRangeGridlinePaint(new Color(102, 126, 234, 35));
+            xyPlot.setDomainGridlinePaint(new Color(102, 126, 234, 25));
+            xyPlot.setRangeGridlinesVisible(true);
+            xyPlot.setDomainGridlinesVisible(true);
+            
+            // Professional crosshair styling
+            xyPlot.setRangeGridlineStroke(new BasicStroke(0.7f, BasicStroke.CAP_ROUND, 
+                BasicStroke.JOIN_ROUND, 1.0f, new float[] { 3.0f, 2.0f }, 0.0f));
+            xyPlot.setDomainGridlineStroke(new BasicStroke(0.5f, BasicStroke.CAP_ROUND, 
+                BasicStroke.JOIN_ROUND, 1.0f, new float[] { 2.0f, 2.0f }, 0.0f));
+            
+            // Enable crosshairs for professional precision
+            xyPlot.setDomainCrosshairVisible(true);
+            xyPlot.setRangeCrosshairVisible(true);
+            xyPlot.setDomainCrosshairPaint(new Color(102, 126, 234, 120));
+            xyPlot.setRangeCrosshairPaint(new Color(102, 126, 234, 120));
+            xyPlot.setDomainCrosshairStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, 
+                BasicStroke.JOIN_ROUND, 1.0f, new float[] { 5.0f, 3.0f }, 0.0f));
+            xyPlot.setRangeCrosshairStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, 
+                BasicStroke.JOIN_ROUND, 1.0f, new float[] { 5.0f, 3.0f }, 0.0f));
+            
+            // Professional axis styling
             xyPlot.getDomainAxis().setLabelPaint(TEXT());
-            xyPlot.getDomainAxis().setTickLabelPaint(TEXT());
+            xyPlot.getDomainAxis().setTickLabelPaint(TEXT_DIM());
+            xyPlot.getDomainAxis().setLabelFont(new Font("Segoe UI", Font.BOLD, 12));
+            xyPlot.getDomainAxis().setTickLabelFont(new Font("Segoe UI", Font.PLAIN, 10));
+            
             xyPlot.getRangeAxis().setLabelPaint(TEXT());
-            xyPlot.getRangeAxis().setTickLabelPaint(TEXT());
+            xyPlot.getRangeAxis().setTickLabelPaint(TEXT_DIM());
+            xyPlot.getRangeAxis().setLabelFont(new Font("Segoe UI", Font.BOLD, 12));
+            xyPlot.getRangeAxis().setTickLabelFont(new Font("Segoe UI", Font.PLAIN, 10));
 
-            org.jfree.chart.renderer.xy.XYLineAndShapeRenderer renderer = new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer();
-            renderer.setSeriesPaint(0, ACCENT);
-            renderer.setSeriesStroke(0, new BasicStroke(3.0f));
+            org.jfree.chart.renderer.xy.XYLineAndShapeRenderer renderer = 
+                new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer();
+            
+            // Institutional violet line with gradient effect
+            renderer.setSeriesPaint(0, new Color(102, 126, 234));
+            renderer.setSeriesStroke(0, new BasicStroke(3.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            renderer.setSeriesShapesVisible(0, true);
+            renderer.setSeriesShape(0, new java.awt.geom.Ellipse2D.Double(-3, -3, 6, 6));
+            renderer.setSeriesShapesFilled(0, true);
+            
             xyPlot.setRenderer(renderer);
         }
+    }
     }
 
     private ChartPanel createHistoricalPerformanceChart(String symbol) {

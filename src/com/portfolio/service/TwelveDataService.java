@@ -112,6 +112,15 @@ public class TwelveDataService implements StockPriceService {
      * Gets historical daily data for a stock.
      * Endpoint: /time_series?symbol=X&interval=1day&outputsize=30&apikey=KEY
      */
+    @Override
+    public String getHistoricalData(String symbol) throws Exception {
+        return getHistoricalData(symbol, 30); // Default to 30 days
+    }
+
+    /**
+     * Gets historical daily data for a stock with custom days.
+     * Endpoint: /time_series?symbol=X&interval=1day&outputsize=30&apikey=KEY
+     */
     public String getHistoricalData(String symbol, int days) throws Exception {
         String apiKey = ApiKeyManager.getTwelveDataKey();
         String url = String.format("%s/time_series?symbol=%s&interval=1day&outputsize=%d&apikey=%s",

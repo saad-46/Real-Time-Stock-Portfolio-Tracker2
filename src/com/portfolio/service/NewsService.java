@@ -329,6 +329,8 @@ public class NewsService {
         private String url;
         private String source;
         private String description;
+        private String imageUrl;
+        private String publishedAt;
 
         public NewsItem(String title, String category, String sentiment, String url) {
             this.title = title;
@@ -337,6 +339,8 @@ public class NewsService {
             this.url = url;
             this.source = "";
             this.description = "";
+            this.imageUrl = "";
+            this.publishedAt = "";
         }
 
         public String getTitle() {
@@ -369,6 +373,22 @@ public class NewsService {
 
         public void setDescription(String description) {
             this.description = description;
+        }
+
+        public String getImageUrl() {
+            return imageUrl;
+        }
+
+        public void setImageUrl(String imageUrl) {
+            this.imageUrl = imageUrl;
+        }
+
+        public String getPublishedAt() {
+            return publishedAt;
+        }
+
+        public void setPublishedAt(String publishedAt) {
+            this.publishedAt = publishedAt;
         }
     }
 }

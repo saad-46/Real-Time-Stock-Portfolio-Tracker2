@@ -64,6 +64,13 @@ public class PortfolioItem {
         return (stock.getCurrentPrice() - purchasePrice) * quantity; // (Current - Purchase) × Quantity
     }
 
+    // Calculates the percentage gain or loss on this holding
+    // Example: (($278 - $150) / $150) × 100 = 85.33% gain
+    public double getGainLossPercent() {
+        if (purchasePrice == 0) return 0; // Avoid division by zero
+        return ((stock.getCurrentPrice() - purchasePrice) / purchasePrice) * 100;
+    }
+
     // Override toString - formats the item for display
     // Example: "AAPL x10 @ $150.0 (Current: $278.12)"
     @Override

@@ -197,25 +197,58 @@ public class GroqAIService {
 
     private String parseAIResponse(String body) {
         try {
+            // Find the content field in the JSON response
             int contentIdx = body.indexOf("\"content\":");
-            if (contentIdx == -1)
-                return "AI response error.";
-            int start = body.indexOf("\"", contentIdx + 11) + 1;
-            int end = body.lastIndexOf("\"", body.lastIndexOf("}") - 1);
-            // Improving robustness of end index search
-            String sub = body.substring(start);
-            int lastQuote = sub.lastIndexOf("\"");
-            // This is a naive parser; for production a real JSON lib is better, but here we
-            // avoid dependencies
-            String content = sub.substring(0, lastQuote);
-            return content.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
+            if (contentIdx == -1) {
+                return "AI response error: No content found.";
+            }
+            
+            // Find the start of the content string
+            int start = body.indexOf("\"", contentIdx + 10) + 1;
+            if (start == 0) {
+                return "AI response error: Invalid format.";
+            }
+            
+            // Find the end of the content string (before the next field)
+            int end = start;
+            boolean escaped = false;
+            while (end < body.length()) {
+                char c = body.charAt(end);
+                if (c == '\\' && !escaped) {
+                    escaped = true;
+                } else if (c == '"' && !escaped) {
+                    break;
+                } else {
+                    escaped = false;
+                }
+                end++;
+            }
+            
+            if (end >= body.length()) {
+                return "AI response error: Incomplete response.";
+            }
+            
+            String content = body.substring(start, end);
+            
+            // Unescape the JSON string
+            content = content.replace("\\n", "\n")
+                           .replace("\\\"", "\"")
+                           .replace("\\\\", "\\")
+                           .replace("\\t", "\t");
+            
+            return content.trim();
         } catch (Exception e) {
-            return "Error parsing AI response.";
+            e.printStackTrace();
+            return "Error parsing AI response: " + e.getMessage();
         }
     }
 
     private String escapeJson(String str) {
-        return str.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+        return str.replace("\\", "\\\\")
+                 .replace("\"", "\\\"")
+                 .replace("\n", "\\n")
+                 .replace("\r", "\\r")
+                 .replace("\t", "\\t");
     }
 
     private String extractField(String json, String field) {
@@ -230,6 +263,60 @@ public class GroqAIService {
         return val;
     }
 
+    /**
+     * Analyze a specific stock using Groq AI with structured bullet format
+     * @param symbol Stock symbol (e.g., "AAPL")
+     * @param currentPrice Current stock price
+     * @return AI-generated analysis in structured bullet format
+     */
+    public String analyzeStock(String symbol, double currentPrice) throws Exception {
+        String prompt = String.format(
+            "Analyze %s stock currently trading at ₹%.2f.\n\n" +
+            "Provide analysis in this EXACT format with bullet points:\n\n" +
+            "📊 CURRENT POSITION:\n" +
+            "• [Brief market position statement]\n\n" +
+            "💪 KEY STRENGTHS:\n" +
+            "• [Strength 1]\n" +
+            "• [Strength 2]\n\n" +
+            "⚠️ RISKS:\n" +
+            "• [Risk 1]\n" +
+            "• [Risk 2]\n\n" +
+            "🎯 OUTLOOK:\n" +
+            "• Short-term: [Brief outlook]\n" +
+            "• Long-term: [Brief outlook]\n\n" +
+            "💡 RECOMMENDATION:\n" +
+            "• [Clear recommendation]\n\n" +
+            "IMPORTANT: Use professional financial terminology. Do NOT use 'Buy' or 'Sell'. " +
+            "Use terms like 'Strong position', 'Consider adding', 'Reduce exposure', etc. Keep it concise.",
+            symbol, currentPrice
+        );
+
+        String json = String.format(
+            "{ \"model\": \"llama-3.3-70b-versatile\", \"messages\": [{\"role\":\"user\",\"content\":\"%s\"}], \"temperature\": 0.7, \"max_tokens\": 500 }",
+            escapeJson(prompt)
+        );
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(API_URL))
+            .header("Authorization", "Bearer " + API_KEY)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json))
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            throw new Exception("AI Stock Analysis error: " + response.statusCode());
+        }
+
+        String aiResponse = parseAIResponse(response.body());
+        
+        // If parsing failed and we got JSON, return error
+        if (aiResponse.contains("\"content\"") || aiResponse.contains("choices")) {
+            return "Error: Unable to parse AI response. Please try again.";
+        }
+        
+        return aiResponse;
+    }
     private static class Message {
         String role, content;
 
